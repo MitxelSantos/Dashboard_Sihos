@@ -1,0 +1,335 @@
+/*
+Layout CSS - Estructura del Dashboard
+Header fijo, Sidebar, Footer
+*/
+
+/* ============================================================================
+   HEADER FIJO (Arriba de todo)
+   ============================================================================ */
+
+.main-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 85px;
+    background: var(--gradient-header);
+    color: white;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: var(--z-header);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--spacing-xl);
+    animation: slideInDown var(--transition-base);
+    border-bottom: 3px solid rgba(255, 255, 255, 0.1);
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-lg);
+    width: 100%;
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+.header-logo {
+    height: 65px;
+    width: auto;
+    background: white;
+    padding: var(--spacing-sm);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    transition: transform var(--transition-base);
+}
+
+.header-logo:hover {
+    transform: scale(1.05);
+}
+
+.header-text {
+    flex: 1;
+}
+
+.header-text h1 {
+    font-size: var(--font-size-2xl);
+    margin: 0;
+    color: white;
+    font-weight: var(--font-weight-bold);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.header-text p {
+    font-size: var(--font-size-base);
+    margin: 0;
+    color: rgba(255, 255, 255, 0.95);
+    opacity: 0.95;
+    font-weight: var(--font-weight-medium);
+}
+
+.header-actions {
+    display: flex;
+    gap: var(--spacing-md);
+    align-items: center;
+}
+
+/* ============================================================================
+   MAIN CONTENT (Debajo del header)
+   ============================================================================ */
+
+.stApp {
+    padding-top: 85px !important; /* Espacio para header fijo */
+    background-color: var(--bg-primary) !important;
+    min-height: 100vh;
+}
+
+/* ============================================================================
+   TABS (Pestañas de navegación)
+   ============================================================================ */
+
+/* Contenedor de tabs */
+.stTabs {
+    margin-top: var(--spacing-lg);
+    background-color: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-sm);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Lista de tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: var(--spacing-sm);
+    background-color: transparent;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: var(--spacing-sm);
+}
+
+/* Tab individual */
+.stTabs [data-baseweb="tab"] {
+    height: 50px;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    background-color: transparent;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-semibold);
+    border: none;
+    transition: all var(--transition-base);
+}
+
+/* Tab hover */
+.stTabs [data-baseweb="tab"]:hover {
+    background-color: var(--very-light-green);
+    color: var(--primary);
+}
+
+/* Tab activo */
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    background: var(--gradient-primary);
+    color: white !important;
+    box-shadow: var(--shadow-md);
+}
+
+/* Contenido del tab */
+.stTabs [data-baseweb="tab-panel"] {
+    padding: var(--spacing-xl) 0;
+}
+
+/* ============================================================================
+   SIDEBAR
+   ============================================================================ */
+
+/* Contenedor del sidebar */
+[data-testid="stSidebar"] {
+    background: var(--gradient-sidebar);
+    box-shadow: var(--shadow-xl);
+    z-index: var(--z-sidebar);
+}
+
+[data-testid="stSidebar"] > div:first-child {
+    background: var(--gradient-sidebar);
+    padding-top: var(--spacing-md);
+}
+
+/* Secciones del sidebar */
+.sidebar-section {
+    padding: var(--spacing-md);
+    margin: var(--spacing-md) 0;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-section h2,
+.sidebar-section h3,
+.sidebar-section h4 {
+    color: white;
+    font-size: var(--font-size-base);
+    margin-bottom: var(--spacing-md);
+}
+
+/* Widgets del sidebar */
+[data-testid="stSidebar"] .stSelectbox label,
+[data-testid="stSidebar"] .stDateInput label,
+[data-testid="stSidebar"] .stTextInput label,
+[data-testid="stSidebar"] .stSlider label {
+    color: white !important;
+    font-weight: var(--font-weight-medium);
+}
+
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+[data-testid="stSidebar"] h2 {
+    color: white !important;
+}
+
+/* Separadores en sidebar */
+[data-testid="stSidebar"] hr {
+    border-color: rgba(255, 255, 255, 0.2);
+    margin: var(--spacing-lg) 0;
+}
+
+/* ============================================================================
+   FOOTER
+   ============================================================================ */
+
+.main-footer {
+    margin-top: var(--spacing-2xl);
+    padding: var(--spacing-xl);
+    text-align: center;
+    background: var(--gradient-header);
+    color: white;
+    border-top: 3px solid var(--primary);
+    box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.main-footer p {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.main-footer a {
+    color: var(--very-light-green);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+}
+
+.main-footer a:hover {
+    color: white;
+    text-decoration: underline;
+}
+
+/* ============================================================================
+   RESPONSIVE - TABLET (1024px)
+   ============================================================================ */
+
+@media (max-width: 1024px) {
+    .main-header {
+        height: 75px;
+        padding: 0 var(--spacing-md);
+    }
+    
+    .header-logo {
+        height: 55px;
+    }
+    
+    .header-text h1 {
+        font-size: var(--font-size-xl);
+    }
+    
+    .header-text p {
+        font-size: var(--font-size-sm);
+    }
+    
+    .stApp {
+        padding-top: 75px !important;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        height: 45px;
+        padding: var(--spacing-xs) var(--spacing-md);
+        font-size: var(--font-size-sm);
+    }
+}
+
+/* ============================================================================
+   RESPONSIVE - MÓVIL (768px)
+   ============================================================================ */
+
+@media (max-width: 768px) {
+    .main-header {
+        height: 65px;
+        padding: 0 var(--spacing-sm);
+    }
+    
+    .header-logo {
+        height: 45px;
+    }
+    
+    .header-text h1 {
+        font-size: var(--font-size-lg);
+    }
+    
+    .header-text p {
+        display: none; /* Ocultar subtítulo en móvil */
+    }
+    
+    .header-actions {
+        gap: var(--spacing-sm);
+    }
+    
+    .stApp {
+        padding-top: 65px !important;
+    }
+    
+    /* Tabs verticales en móvil */
+    .stTabs [data-baseweb="tab-list"] {
+        flex-direction: column;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        width: 100%;
+        height: 40px;
+        padding: var(--spacing-xs);
+        font-size: var(--font-size-xs);
+    }
+    
+    .sidebar-logo img {
+        max-width: 80px;
+    }
+    
+    .main-footer {
+        padding: var(--spacing-md);
+    }
+}
+
+/* ============================================================================
+   AJUSTES PARA STREAMLIT
+   ============================================================================ */
+
+/* Ocultar elementos innecesarios de Streamlit */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+
+/* Ajustar padding del contenedor principal */
+.main .block-container {
+    padding-top: var(--spacing-md);
+    padding-bottom: var(--spacing-2xl);
+    max-width: 1400px;
+}
+
+/* ============================================================================
+   SEPARADOR DE SECCIONES
+   ============================================================================ */
+
+.section-divider {
+    height: 3px;
+    background: var(--gradient-primary);
+    border: none;
+    border-radius: var(--radius-sm);
+    margin: var(--spacing-xl) 0;
+}

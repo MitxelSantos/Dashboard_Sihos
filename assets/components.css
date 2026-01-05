@@ -1,0 +1,456 @@
+/*
+Components CSS - Estilos de Componentes Reutilizables
+Cards, Botones, Métricas, Tablas, etc.
+*/
+
+/* ============================================================================
+   METRIC CARDS (Tarjetas de Métricas)
+   ============================================================================ */
+
+.metric-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-xl);
+    box-shadow: var(--shadow-md);
+    backdrop-filter: blur(10px);
+    transition: all var(--transition-base);
+    animation: fadeIn var(--transition-base);
+}
+
+.metric-card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-xl);
+}
+
+.metric-icon {
+    font-size: var(--font-size-4xl);
+    margin-bottom: var(--spacing-md);
+}
+
+.metric-label {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+.metric-value {
+    font-size: var(--font-size-4xl);
+    font-weight: var(--font-weight-bold);
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* ============================================================================
+   GRADIENT CARD (Tarjeta con Gradiente)
+   ============================================================================ */
+
+.gradient-card {
+    background: var(--gradient-primary);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-xl);
+    color: white !important;
+    box-shadow: var(--shadow-lg);
+    transition: all var(--transition-base);
+}
+
+.gradient-card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-xl);
+}
+
+.gradient-card * {
+    color: white !important;
+}
+
+.gradient-card h2,
+.gradient-card h3,
+.gradient-card h4,
+.gradient-card p,
+.gradient-card span,
+.gradient-card div {
+    color: white !important;
+}
+
+/* ============================================================================
+   SECTION BANNER (Banner de Sección)
+   ============================================================================ */
+
+.section-banner {
+    background: var(--gradient-primary);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg) var(--spacing-xl);
+    color: white !important;
+    box-shadow: var(--shadow-md);
+    margin: var(--spacing-xl) 0;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    animation: slideInLeft var(--transition-base);
+}
+
+.section-banner * {
+    color: white !important;
+}
+
+.section-banner-icon {
+    font-size: var(--font-size-3xl);
+    color: white !important;
+}
+
+.section-banner h2 {
+    margin: 0;
+    font-size: var(--font-size-2xl);
+    color: white !important;
+}
+
+.section-banner h3,
+.section-banner h4,
+.section-banner p,
+.section-banner span {
+    color: white !important;
+}
+
+/* ============================================================================
+   BOTONES
+   ============================================================================ */
+
+.btn {
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border-radius: var(--radius-md);
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-base);
+    border: none;
+    cursor: pointer;
+    transition: all var(--transition-base);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+.btn-primary {
+    background: var(--gradient-primary);
+    color: white;
+}
+
+.btn-success {
+    background: var(--gradient-success);
+    color: white;
+}
+
+.btn-info {
+    background: var(--gradient-info);
+    color: white;
+}
+
+.btn-warning {
+    background: var(--gradient-warning);
+    color: white;
+}
+
+/* Estilo para botones de Streamlit */
+.stButton > button {
+    width: 100%;
+    background: var(--gradient-primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    font-weight: var(--font-weight-semibold);
+    transition: all var(--transition-base);
+    box-shadow: var(--shadow-sm);
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    background: var(--gradient-success);
+}
+
+/* ============================================================================
+   TABLAS
+   ============================================================================ */
+
+.dataframe {
+    background: var(--card-bg);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+}
+
+.dataframe table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.dataframe th {
+    background: var(--gradient-primary);
+    color: white;
+    padding: var(--spacing-md);
+    font-weight: var(--font-weight-semibold);
+    text-align: left;
+}
+
+.dataframe td {
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.dataframe tr:hover {
+    background: var(--very-light-green);
+    transform: scale(1.01);
+    transition: all var(--transition-fast);
+}
+
+.dataframe tr:last-child td {
+    border-bottom: none;
+}
+
+/* Estilo para dataframes de Streamlit */
+[data-testid="stDataFrame"] {
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+}
+
+[data-testid="stDataFrame"] table {
+    background: var(--card-bg);
+}
+
+[data-testid="stDataFrame"] th {
+    background: var(--primary) !important;
+    color: white !important;
+}
+
+[data-testid="stDataFrame"] tr:hover {
+    background: var(--very-light-green) !important;
+}
+
+/* ============================================================================
+   GRÁFICOS
+   ============================================================================ */
+
+.chart-container {
+    background: var(--card-bg);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-md);
+    margin: var(--spacing-lg) 0;
+}
+
+/* Estilo para gráficos de Plotly */
+.js-plotly-plot {
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+/* ============================================================================
+   INPUTS Y FORMULARIOS
+   ============================================================================ */
+
+.stTextInput input,
+.stSelectbox select,
+.stDateInput input,
+.stNumberInput input {
+    border-radius: var(--radius-md);
+    border: 2px solid var(--border-color);
+    padding: var(--spacing-sm);
+    transition: all var(--transition-base);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.stTextInput input:focus,
+.stSelectbox select:focus,
+.stDateInput input:focus,
+.stNumberInput input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(45, 106, 79, 0.1);
+    outline: none;
+}
+
+/* Slider */
+.stSlider {
+    padding: var(--spacing-md) 0;
+}
+
+.stSlider [data-baseweb="slider"] [role="slider"] {
+    background-color: var(--primary);
+}
+
+.stSlider [data-baseweb="slider"] [data-testid="stTickBar"] {
+    background: var(--gradient-primary);
+}
+
+/* ============================================================================
+   ALERTS Y MENSAJES
+   ============================================================================ */
+
+.stAlert {
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    margin: var(--spacing-md) 0;
+}
+
+.stSuccess {
+    background-color: rgba(64, 145, 108, 0.1);
+    border-left: 4px solid var(--success);
+}
+
+.stWarning {
+    background-color: rgba(255, 193, 7, 0.1);
+    border-left: 4px solid var(--warning);
+}
+
+.stError {
+    background-color: rgba(220, 53, 69, 0.1);
+    border-left: 4px solid var(--danger);
+}
+
+.stInfo {
+    background-color: rgba(0, 119, 182, 0.1);
+    border-left: 4px solid var(--info);
+}
+
+/* ============================================================================
+   EXPANSORES
+   ============================================================================ */
+
+.streamlit-expanderHeader {
+    background: var(--card-bg);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    font-weight: var(--font-weight-semibold);
+    color: var(--primary);
+    transition: all var(--transition-base);
+}
+
+.streamlit-expanderHeader:hover {
+    background: var(--very-light-green);
+}
+
+/* ============================================================================
+   LOADING Y SPINNERS
+   ============================================================================ */
+
+.stSpinner > div {
+    border-color: var(--primary) transparent transparent transparent !important;
+}
+
+/* ============================================================================
+   MARKDOWN PERSONALIZADO
+   ============================================================================ */
+
+.stMarkdown {
+    color: var(--text-primary);
+}
+
+.stMarkdown h1,
+.stMarkdown h2,
+.stMarkdown h3 {
+    color: var(--primary);
+}
+
+.stMarkdown a {
+    color: var(--info);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+}
+
+.stMarkdown a:hover {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.stMarkdown code {
+    background: rgba(45, 106, 79, 0.1);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    color: var(--primary);
+    font-family: 'Courier New', monospace;
+}
+
+/* ============================================================================
+   COLUMNAS
+   ============================================================================ */
+
+[data-testid="column"] {
+    padding: 0 var(--spacing-sm);
+}
+
+/* ============================================================================
+   RESPONSIVE - TABLET
+   ============================================================================ */
+
+@media (max-width: 1024px) {
+    .metric-card {
+        padding: var(--spacing-md);
+    }
+    
+    .metric-value {
+        font-size: var(--font-size-3xl);
+    }
+    
+    .section-banner {
+        padding: var(--spacing-md);
+    }
+    
+    .section-banner h2 {
+        font-size: var(--font-size-xl);
+    }
+}
+
+/* ============================================================================
+   RESPONSIVE - MÓVIL
+   ============================================================================ */
+
+@media (max-width: 768px) {
+    .metric-card {
+        padding: var(--spacing-sm);
+    }
+    
+    .metric-value {
+        font-size: var(--font-size-2xl);
+    }
+    
+    .metric-icon {
+        font-size: var(--font-size-2xl);
+    }
+    
+    .section-banner {
+        flex-direction: column;
+        text-align: center;
+        padding: var(--spacing-sm);
+    }
+    
+    .section-banner h2 {
+        font-size: var(--font-size-lg);
+    }
+    
+    .btn {
+        padding: var(--spacing-xs) var(--spacing-md);
+        font-size: var(--font-size-sm);
+    }
+    
+    .chart-container {
+        padding: var(--spacing-sm);
+    }
+    
+    [data-testid="column"] {
+        padding: var(--spacing-xs) 0;
+    }
+}
