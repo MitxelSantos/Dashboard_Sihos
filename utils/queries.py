@@ -509,6 +509,260 @@ class SIHOSQueries:
         LIMIT 10
         """
     
+    def get_distribucion_estado(self):
+        """Distribución por estado de admisión"""
+        return """
+        SELECT 
+            CASE 
+                WHEN Cerrado = 1 THEN 'Cerrada'
+                WHEN Cerrado = 2 THEN 'Activa'
+                ELSE 'Otro'
+            END as Estado,
+            COUNT(*) as Total
+        FROM Admision
+        WHERE FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+            AND Anulado = 2
+        GROUP BY Cerrado
+        ORDER BY Total DESC
+        """
+    
+    def get_distribucion_regimen_corregido(self):
+        """Distribución por régimen de afiliación - CORREGIDA con A/B/C/D"""
+        return """
+        SELECT 
+            CASE 
+                WHEN TipoAfil = 'A' THEN 'Tipo A'
+                WHEN TipoAfil = 'B' THEN 'Tipo B'
+                WHEN TipoAfil = 'C' THEN 'Tipo C'
+                WHEN TipoAfil = 'D' THEN 'Tipo D'
+                ELSE 'No Especificado'
+            END as Regimen,
+            COUNT(*) as Total
+        FROM Admision
+        WHERE FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+            AND Anulado = 2
+        GROUP BY TipoAfil
+        ORDER BY Total DESC
+        """
+
+    def get_distribucion_edad_corregido(self):
+        """Distribución por rango de edad - CORREGIDA calculando desde Paciente"""
+        return """
+        SELECT 
+            CASE 
+                WHEN a.ValoEdad < 18 AND a.UnidEdad = 'A' THEN 'Menores de 18'
+                WHEN a.ValoEdad BETWEEN 18 AND 40 AND a.UnidEdad = 'A' THEN '18-40 años'
+                WHEN a.ValoEdad BETWEEN 41 AND 60 AND a.UnidEdad = 'A' THEN '41-60 años'
+                WHEN a.ValoEdad > 60 AND a.UnidEdad = 'A' THEN 'Mayores de 60'
+                WHEN a.UnidEdad IN ('M', 'D') THEN 'Menores de 18'
+                ELSE 'Sin Especificar'
+            END as Rango_Edad,
+            COUNT(*) as Total
+        FROM Admision a
+        WHERE a.FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+            AND a.Anulado = 2
+        GROUP BY Rango_Edad
+        ORDER BY 
+            CASE Rango_Edad
+                WHEN 'Menores de 18' THEN 1
+                WHEN '18-40 años' THEN 2
+                WHEN '41-60 años' THEN 3
+                WHEN 'Mayores de 60' THEN 4
+                ELSE 5
+            END
+        """
+
+    def get_distribucion_genero_corregido(self):
+        """Distribución por género - CORREGIDA usando Paciente.SexoUsua"""
+        return """
+        SELECT 
+            CASE 
+                WHEN p.SexoUsua = 'M' THEN 'Masculino'
+                WHEN p.SexoUsua = 'F' THEN 'Femenino'
+                ELSE 'No Especificado'
+            END as Genero,
+            COUNT(*) as Total
+        FROM Admision a
+        INNER JOIN Paciente p ON a.NumeUsua = p.NumeUsua
+        WHERE a.FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+            AND a.Anulado = 2
+        GROUP BY p.SexoUsua
+        ORDER BY Total DESC
+        """
+
+    # ========================================================================
+    # QUERIES NUEVAS (Agregar estas 3 nuevas)
+    # ========================================================================
+
+    def get_distribucion_tipo_documento(self):
+        """Distribución por tipo de documento"""
+        return """
+        SELECT 
+            CASE 
+                WHEN TipoDocu = 'CC' THEN 'Cédula de Ciudadanía'
+                WHEN TipoDocu = 'TI' THEN 'Tarjeta de Identidad'
+                WHEN TipoDocu = 'RC' THEN 'Registro Civil'
+                WHEN TipoDocu = 'CN' THEN 'Certificado Nacido Vivo'
+                WHEN TipoDocu = 'CE' THEN 'Cédula de Extranjería'
+                WHEN TipoDocu = 'PA' THEN 'Pasaporte'
+                WHEN TipoDocu = 'PE' THEN 'Permiso Especial'
+                WHEN TipoDocu = 'PT' THEN 'Permiso Temporal'
+                WHEN TipoDocu = 'AS' THEN 'Adulto Sin Identificación'
+                WHEN TipoDocu = 'MS' THEN 'Menor Sin Identificación'
+                WHEN TipoDocu = 'CD' THEN 'Carné Diplomático'
+                WHEN TipoDocu = 'NV' THEN 'Nacido Vivo'
+                WHEN TipoDocu = 'SV' THEN 'Salvoconducto'
+                ELSE CONCAT('Otro (', TipoDocu, ')')
+            END as Tipo_Documento,
+            COUNT(*) as Total
+        FROM Admision
+        WHERE FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+            AND Anulado = 2
+        GROUP BY TipoDocu
+        ORDER BY Total DESC
+        """
+
+    def get_distribucion_estrato(self):
+        """Distribución por estrato socioeconómico"""
+        return """
+        SELECT 
+            CASE 
+                WHEN CodiEstr = '0' THEN 'Estrato 0'
+                WHEN CodiEstr = '1' THEN 'Estrato 1'
+                WHEN CodiEstr = '2' THEN 'Estrato 2'
+                WHEN CodiEstr = '3' THEN 'Estrato 3'
+                WHEN CodiEstr = '4' THEN 'Estrato 4'
+                WHEN CodiEstr = '5' THEN 'Estrato 5'
+                WHEN CodiEstr = '6' THEN 'Estrato 6'
+                WHEN CodiEstr = '9' THEN 'Sin Estrato'
+                WHEN CodiEstr IN ('A', 'B', 'C') THEN CONCAT('Categoría ', CodiEstr)
+                ELSE 'No Especificado'
+            END as Estrato,
+            COUNT(*) as Total
+        FROM Admision
+        WHERE FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+            AND Anulado = 2
+        GROUP BY CodiEstr
+        ORDER BY 
+            CASE 
+                WHEN CodiEstr IN ('0','1','2','3','4','5','6') THEN CAST(CodiEstr AS UNSIGNED)
+                WHEN CodiEstr = '9' THEN 99
+                ELSE 100
+            END
+        """
+
+    def get_distribucion_via_ingreso(self):
+        """Distribución por vía de ingreso"""
+        return """
+        SELECT 
+            CASE 
+                WHEN ViaIngre = 1 THEN 'Referencia de Otra Institución'
+                WHEN ViaIngre = 2 THEN 'Espontáneo / Demanda'
+                WHEN ViaIngre = 3 THEN 'Remisión'
+                WHEN ViaIngre = 4 THEN 'Contraremisión'
+                WHEN ViaIngre = 11 THEN 'Otro'
+                ELSE CONCAT('Tipo ', ViaIngre)
+            END as Via_Ingreso,
+            COUNT(*) as Total
+        FROM Admision
+        WHERE FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+            AND Anulado = 2
+            AND ViaIngre IS NOT NULL
+        GROUP BY ViaIngre
+        ORDER BY Total DESC
+        """
+
+    # ========================================================================
+    # QUERY EXISTENTE A MANTENER (verificar que esté)
+    # ========================================================================
+
+    def get_distribucion_estado(self):
+        """Distribución por estado de admisión - YA EXISTE, NO MODIFICAR"""
+        return """
+        SELECT 
+            CASE 
+                WHEN Cerrado = 1 THEN 'Cerrada'
+                WHEN Cerrado = 2 THEN 'Activa'
+                ELSE 'Otro'
+            END as Estado,
+            COUNT(*) as Total
+        FROM Admision
+        WHERE FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+            AND Anulado = 2
+        GROUP BY Cerrado
+        ORDER BY Total DESC
+        """
+
+    def get_tendencias_admisiones_completas(self):
+        """Tendencias con múltiples métricas - YA EXISTE, NO MODIFICAR"""
+        return """
+        SELECT 
+            DATE(FechIngr) as Fecha,
+            COUNT(*) as Total_Admisiones,
+            COUNT(CASE WHEN TipoAten = 1 THEN 1 END) as Urgencias,
+            COUNT(CASE WHEN TipoAten = 2 THEN 1 END) as Hospitalizacion,
+            COUNT(CASE WHEN TipoAten = 3 THEN 1 END) as Consulta_Externa,
+            ROUND(AVG(CASE WHEN Cerrado = 1 AND FechEgre IS NOT NULL 
+                        THEN DATEDIFF(FechEgre, FechIngr) END), 1) as Promedio_Diario,
+            ROUND((COUNT(CASE WHEN TipoAten = 2 AND Cerrado = 2 THEN 1 END) / 
+                (SELECT COUNT(*) FROM CodiCama WHERE Activa = 1)) * 100, 1) as Porcentaje_Ocupacion
+        FROM Admision
+        WHERE FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+            AND Anulado = 2
+        GROUP BY DATE(FechIngr)
+        ORDER BY Fecha
+        """
+
+    def get_top_diagnosticos_ingreso_completo(self):
+        """Top diagnósticos SIN LÍMITE - YA EXISTE, NO MODIFICAR"""
+        return """
+        SELECT 
+            DiagIngr as Codigo,
+            COUNT(*) as Total
+        FROM Admision
+        WHERE DiagIngr IS NOT NULL 
+            AND DiagIngr != ''
+            AND FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+            AND Anulado = 2
+        GROUP BY DiagIngr
+        ORDER BY Total DESC
+        """
+
+    def get_tendencias_admisiones_completas(self):
+        """Tendencias con múltiples métricas para gráficas múltiples"""
+        return """
+        SELECT 
+            DATE(FechIngr) as Fecha,
+            COUNT(*) as Total_Admisiones,
+            COUNT(CASE WHEN TipoAten = 1 THEN 1 END) as Urgencias,
+            COUNT(CASE WHEN TipoAten = 2 THEN 1 END) as Hospitalizacion,
+            COUNT(CASE WHEN TipoAten = 3 THEN 1 END) as Consulta_Externa,
+            ROUND(AVG(CASE WHEN Cerrado = 1 AND FechEgre IS NOT NULL 
+                        THEN DATEDIFF(FechEgre, FechIngr) END), 1) as Promedio_Diario,
+            ROUND((COUNT(CASE WHEN TipoAten = 2 AND Cerrado = 2 THEN 1 END) / 
+                (SELECT COUNT(*) FROM CodiCama WHERE Activa = 1)) * 100, 1) as Porcentaje_Ocupacion
+        FROM Admision
+        WHERE FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+            AND Anulado = 2
+        GROUP BY DATE(FechIngr)
+        ORDER BY Fecha
+        """
+
+    def get_top_diagnosticos_ingreso_completo(self):
+        """Top diagnósticos de ingreso SIN LÍMITE - todos los datos"""
+        return """
+        SELECT 
+            DiagIngr as Codigo,
+            COUNT(*) as Total
+        FROM Admision
+        WHERE DiagIngr IS NOT NULL 
+            AND DiagIngr != ''
+            AND FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+            AND Anulado = 2
+        GROUP BY DiagIngr
+        ORDER BY Total DESC
+        """
+    
     def get_tiempos_estancia(self):
         """Distribución de tiempos de estancia para hospitalización"""
         return """
