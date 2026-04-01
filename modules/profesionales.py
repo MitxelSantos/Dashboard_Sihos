@@ -1,5 +1,6 @@
 """
-Módulo Profesionales - Análisis Completo de Productividad y Carga
+Módulo Profesionales - Análisis de Productividad y Carga de Trabajo
+6 opciones distribución, 7 métricas tendencias
 """
 
 import streamlit as st
@@ -16,6 +17,7 @@ from utils.db_connector import get_db_connector
 from utils.queries import SIHOSQueries
 from config.settings import COLORS, CACHE_TTL
 from components.widgets import (
+    get_fecha_rango_texto,
     render_metric_card,
     render_section_banner,
     render_section_divider
@@ -24,14 +26,14 @@ from components.layout import render_footer
 
 def render_profesionales():
     """Función principal del módulo de Profesionales"""
-    
-    render_section_banner("👨‍⚕️", "Análisis de Atenciones por Profesional")
-    
-    # Obtener filtros del sidebar
+
     fecha_inicio = st.session_state.get('sidebar_fecha_inicio', datetime.now().date() - timedelta(days=30))
     fecha_fin = st.session_state.get('sidebar_fecha_fin', datetime.now().date())
     
-    # Cargar datos
+    rango_fechas = get_fecha_rango_texto(fecha_inicio, fecha_fin)
+    
+    render_section_banner("👨‍⚕️", "Análisis de Profesionales y Productividad", rango_fechas)
+    
     @st.cache_data(ttl=CACHE_TTL)
     def load_profesionales_data(f_inicio, f_fin):
         db = get_db_connector()
@@ -41,26 +43,37 @@ def render_profesionales():
         try:
             params = {'fecha_inicio': f_inicio, 'fecha_fin': f_fin}
             
-            data['estadisticas'] = db.execute_query(
-                queries.get_estadisticas_profesionales(), params
-            )
-            data['top_profesionales'] = db.execute_query(
-                queries.get_top_profesionales(), params
-            )
+            data['estadisticas'] = db.execute_query(queries.get_estadisticas_profesionales(), params)
+            data['top_profesionales'] = db.execute_query(queries.get_top_profesionales(), params)
+            data['distribucion_carga'] = db.execute_query(queries.get_distribucion_carga_profesionales(), params)
+            data['productividad'] = db.execute_query(queries.get_productividad_profesionales(), params)
+            data['por_servicio'] = db.execute_query(queries.get_atenciones_por_servicio(), params)
+            data['por_especialidad'] = db.execute_query(queries.get_atenciones_por_especialidad(), params)
+            data['por_turno'] = db.execute_query(queries.get_atenciones_por_turno_profesional(), params)
             
-            # NUEVOS DATOS
-            data['distribucion_carga'] = db.execute_query(
-                queries.get_distribucion_carga_profesionales(), params
-            )
-            data['productividad'] = db.execute_query(
-                queries.get_productividad_profesionales(), params
-            )
-            data['por_servicio'] = db.execute_query(
-                queries.get_atenciones_por_servicio(), params
-            )
+            # Tendencias
+            query_tendencias = f"""
+            SELECT 
+                DATE(FechCons) as Fecha,
+                COUNT(*) as Total_Atenciones,
+                COUNT(DISTINCT UsuaCons) as Profesionales_Activos,
+                COUNT(CASE WHEN EstaReal = 1 THEN 1 END) as Atenciones_Realizadas,
+                COUNT(CASE WHEN EstaReal = 0 THEN 1 END) as Atenciones_Pendientes,
+                ROUND((COUNT(CASE WHEN EstaReal = 1 THEN 1 END) / COUNT(*)) * 100, 1) as Tasa_Cumplimiento,
+                ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT UsuaCons), 0), 1) as Productividad_Promedio
+            FROM RipsCons
+            WHERE FechCons BETWEEN '{f_inicio}' AND '{f_fin}'
+                AND UsuaCons IS NOT NULL
+                AND UsuaCons != ''
+            GROUP BY DATE(FechCons)
+            ORDER BY Fecha
+            """
+            data['tendencias'] = db.execute_query(query_tendencias)
             
         except Exception as e:
             st.error(f"Error cargando datos: {e}")
+            import traceback
+            st.code(traceback.format_exc())
             return None
         
         return data
@@ -81,208 +94,431 @@ def render_profesionales():
         
         with col1:
             render_metric_card(
-                "📋",
-                "TOTAL ATENCIONES",
-                f"{int(stats.get('Total_Atenciones', 0)):,}",
+                "👥",
+                "PROFESIONALES ACTIVOS",
+                f"{int(stats.get('Profesionales_Activos', 0)):,}",
                 COLORS['primary'],
                 COLORS['secondary']
             )
         
         with col2:
             render_metric_card(
-                "👨‍⚕️",
-                "PROFESIONALES ACTIVOS",
-                f"{int(stats.get('Profesionales_Activos', 0)):,}",
-                COLORS['success'],
-                COLORS['info']
-            )
-        
-        with col3:
-            render_metric_card(
-                "✅",
-                "REALIZADAS",
-                f"{int(stats.get('Atenciones_Realizadas', 0)):,}",
+                "📋",
+                "TOTAL ATENCIONES",
+                f"{int(stats.get('Total_Atenciones', 0)):,}",
                 COLORS['info'],
                 COLORS['primary']
             )
         
+        with col3:
+            realizadas = int(stats.get('Atenciones_Realizadas', 0))
+            render_metric_card(
+                "✅",
+                "REALIZADAS",
+                f"{realizadas:,}",
+                COLORS['success'],
+                COLORS['info']
+            )
+        
         with col4:
+            pendientes = int(stats.get('Atenciones_Pendientes', 0))
+            color_pendientes = COLORS['warning'] if pendientes > 100 else COLORS['success']
             render_metric_card(
                 "⏳",
                 "PENDIENTES",
-                f"{int(stats.get('Atenciones_Pendientes', 0)):,}",
-                COLORS['warning'],
+                f"{pendientes:,}",
+                color_pendientes,
                 COLORS['danger']
             )
     
     render_section_divider()
     
     # =======================================================================
-    # NUEVA SECCIÓN: DISTRIBUCIÓN DE CARGA
+    # DISTRIBUCIÓN
     # =======================================================================
-    render_section_banner("⚖️", "Distribución de Carga de Trabajo (Top 15)")
+    render_section_banner("📊", "Distribución de Atenciones", rango_fechas)
     
-    if not data['distribucion_carga'].empty:
-        fig_carga = px.bar(
-            data['distribucion_carga'],
+    col_dist, col_grafica = st.columns([2, 2])
+    
+    with col_dist:
+        opcion_dist = st.radio(
+            "Ver distribución por:",
+            [
+                "Carga de Trabajo",
+                "Por Servicio",
+                "Por Especialidad",
+                "Por Turno",
+                "Productividad Individual",
+                "Tasa de Cumplimiento"
+            ],
+            horizontal=True,
+            key="radio_dist_prof"
+        )
+    
+    with col_grafica:
+        tipo_grafica_dist = st.radio(
+            "Tipo de gráfica:",
+            [
+                "🥧 Pie Chart",
+                "📊 Bar Horizontal",
+                "📊 Bar Agrupadas",
+                "☀️ Sunburst",
+                "🌳 Treemap",
+                "🗺️ Funnel"
+            ],
+            horizontal=True,
+            key="radio_tipo_grafica_dist_prof"
+        )
+    
+    datos_dict = {
+        "Carga de Trabajo": (data['distribucion_carga'], 'Profesional', 'Total_Atenciones'),
+        "Por Servicio": (data['por_servicio'], 'Servicio', 'Total_Atenciones'),
+        "Por Especialidad": (data['por_especialidad'], 'Especialidad', 'Total_Atenciones'),
+        "Por Turno": (data['por_turno'], 'Turno', 'Total_Atenciones'),
+        "Productividad Individual": (data['top_profesionales'], 'Profesional', 'Total_Atenciones'),
+        "Tasa de Cumplimiento": (data['productividad'], 'Profesional', 'Porcentaje_Cumplimiento')
+    }
+    
+    datos_dist, campo_nombre, campo_valor = datos_dict[opcion_dist]
+    titulo = f"Distribución {opcion_dist}"
+    
+    if not datos_dist.empty:
+        col_graf, col_metricas = st.columns([3, 1])
+        
+        with col_graf:
+            fig_dist = None
+            
+            if "Pie" in tipo_grafica_dist:
+                fig_dist = px.pie(
+                    datos_dist,
+                    values=campo_valor,
+                    names=campo_nombre,
+                    title=titulo,
+                    color_discrete_sequence=[
+                        COLORS['primary'], COLORS['info'], COLORS['success'],
+                        COLORS['warning'], COLORS['secondary'], COLORS['danger'],
+                        '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#96CEB4'
+                    ]
+                )
+                fig_dist.update_traces(textposition='inside', textinfo='percent+label')
+            
+            elif "Bar Horizontal" in tipo_grafica_dist:
+                fig_dist = px.bar(
+                    datos_dist,
+                    x=campo_valor,
+                    y=campo_nombre,
+                    orientation='h',
+                    title=titulo,
+                    color=campo_valor,
+                    color_continuous_scale='Blues'
+                )
+                fig_dist.update_layout(yaxis={'categoryorder':'total ascending'}, showlegend=False)
+            
+            elif "Bar Agrupadas" in tipo_grafica_dist:
+                fig_dist = px.bar(
+                    datos_dist,
+                    x=campo_nombre,
+                    y=campo_valor,
+                    title=titulo,
+                    color=campo_nombre,
+                    color_discrete_sequence=[
+                        COLORS['primary'], COLORS['info'], COLORS['success'],
+                        COLORS['warning'], COLORS['secondary'], COLORS['danger']
+                    ]
+                )
+                fig_dist.update_layout(showlegend=False)
+            
+            elif "Sunburst" in tipo_grafica_dist:
+                df_sunburst = datos_dist.copy()
+                df_sunburst['Root'] = 'Total'
+                fig_dist = px.sunburst(
+                    df_sunburst,
+                    path=['Root', campo_nombre],
+                    values=campo_valor,
+                    title=titulo
+                )
+            
+            elif "Treemap" in tipo_grafica_dist:
+                fig_dist = px.treemap(
+                    datos_dist,
+                    path=[campo_nombre],
+                    values=campo_valor,
+                    title=titulo,
+                    color=campo_valor,
+                    color_continuous_scale='Blues'
+                )
+            
+            elif "Funnel" in tipo_grafica_dist:
+                df_funnel = datos_dist.sort_values(campo_valor, ascending=False)
+                fig_dist = px.funnel(
+                    df_funnel,
+                    x=campo_valor,
+                    y=campo_nombre,
+                    title=titulo
+                )
+            
+            if fig_dist:
+                fig_dist.update_layout(height=450)
+                st.plotly_chart(fig_dist, use_container_width=True)
+        
+        with col_metricas:
+            st.markdown("### 📊 Resumen")
+            total = datos_dist[campo_valor].sum()
+            
+            if 'Porcentaje' in campo_valor:
+                promedio = datos_dist[campo_valor].mean()
+                st.metric("Cumplimiento Promedio", f"{promedio:.1f}%")
+            else:
+                st.metric("Total", f"{int(total):,}")
+            
+            top_3 = datos_dist.nlargest(3, campo_valor)
+            st.markdown("#### 🏆 Top 3")
+            for idx, row in top_3.iterrows():
+                if 'Porcentaje' in campo_valor:
+                    st.metric(
+                        label=str(row[campo_nombre])[:25],
+                        value=f"{row[campo_valor]:.1f}%"
+                    )
+                else:
+                    porcentaje = (row[campo_valor] / total) * 100 if total > 0 else 0
+                    st.metric(
+                        label=str(row[campo_nombre])[:25],
+                        value=f"{int(row[campo_valor]):,}",
+                        delta=f"{porcentaje:.1f}%"
+                    )
+        
+        with st.expander("📋 Ver tabla detallada"):
+            st.dataframe(datos_dist, use_container_width=True, hide_index=True)
+            
+            csv = datos_dist.to_csv(index=False, encoding='utf-8-sig')
+            st.download_button(
+                label="📥 Descargar CSV",
+                data=csv,
+                file_name=f"profesionales_{opcion_dist.lower().replace(' ', '_')}_{fecha_inicio}_{fecha_fin}.csv",
+                mime="text/csv"
+            )
+    else:
+        st.info(f"No hay datos para {opcion_dist}")
+    
+    render_section_divider()
+    
+    # =======================================================================
+    # TENDENCIAS
+    # =======================================================================
+    render_section_banner("📈", "Tendencias en el Tiempo", rango_fechas)
+    
+    if not data['tendencias'].empty:
+        col_metrica, col_tipo = st.columns([2, 2])
+        
+        with col_metrica:
+            metrica_tendencia = st.radio(
+                "Métrica a visualizar:",
+                [
+                    "Total de Atenciones",
+                    "Atenciones Realizadas",
+                    "Atenciones Pendientes",
+                    "Productividad Promedio",
+                    "Tasa de Cumplimiento",
+                    "Profesionales Activos",
+                    "Realizadas vs Pendientes"
+                ],
+                horizontal=True,
+                key="radio_metrica_tendencia_prof"
+            )
+        
+        with col_tipo:
+            tipo_grafica = st.radio(
+                "Tipo de gráfica:",
+                [
+                    "📈 Línea",
+                    "📊 Barras",
+                    "📉 Área",
+                    "📊 Barras Apiladas",
+                    "📈 Área Apilada",
+                    "📊 Barras + Línea"
+                ],
+                horizontal=True,
+                key="radio_tipo_grafica_prof"
+            )
+        
+        fig_tendencia = None
+        
+        if metrica_tendencia == "Realizadas vs Pendientes":
+            # Gráfica múltiple
+            if "Área" in tipo_grafica and ("Apilada" in tipo_grafica or "Apiladas" in tipo_grafica):
+                # Área Apilada
+                fig_tendencia = go.Figure()
+                fig_tendencia.add_trace(go.Scatter(
+                    x=data['tendencias']['Fecha'],
+                    y=data['tendencias']['Atenciones_Realizadas'],
+                    name='Realizadas',
+                    fill='tonexty',
+                    mode='lines',
+                    line=dict(color=COLORS['success'])
+                ))
+                fig_tendencia.add_trace(go.Scatter(
+                    x=data['tendencias']['Fecha'],
+                    y=data['tendencias']['Atenciones_Pendientes'],
+                    name='Pendientes',
+                    fill='tonexty',
+                    mode='lines',
+                    line=dict(color=COLORS['warning'])
+                ))
+                fig_tendencia.update_layout(title="Atenciones Realizadas vs Pendientes", height=450)
+            elif "Apiladas" in tipo_grafica or "Apilada" in tipo_grafica:
+                # Barras Apiladas
+                fig_tendencia = go.Figure()
+                fig_tendencia.add_trace(go.Bar(
+                    x=data['tendencias']['Fecha'],
+                    y=data['tendencias']['Atenciones_Realizadas'],
+                    name='Realizadas',
+                    marker_color=COLORS['success']
+                ))
+                fig_tendencia.add_trace(go.Bar(
+                    x=data['tendencias']['Fecha'],
+                    y=data['tendencias']['Atenciones_Pendientes'],
+                    name='Pendientes',
+                    marker_color=COLORS['warning']
+                ))
+                fig_tendencia.update_layout(barmode='stack', title="Atenciones Realizadas vs Pendientes", height=450)
+            else:
+                fig_tendencia = go.Figure()
+                fig_tendencia.add_trace(go.Scatter(
+                    x=data['tendencias']['Fecha'],
+                    y=data['tendencias']['Atenciones_Realizadas'],
+                    mode='lines+markers',
+                    name='Realizadas',
+                    line=dict(color=COLORS['success'], width=2)
+                ))
+                fig_tendencia.add_trace(go.Scatter(
+                    x=data['tendencias']['Fecha'],
+                    y=data['tendencias']['Atenciones_Pendientes'],
+                    mode='lines+markers',
+                    name='Pendientes',
+                    line=dict(color=COLORS['warning'], width=2)
+                ))
+                fig_tendencia.update_layout(title="Atenciones Realizadas vs Pendientes", height=450, hovermode='x unified')
+        
+        else:
+            # Gráfica simple
+            campos_dict = {
+                "Total de Atenciones": ('Total_Atenciones', "Total de Atenciones", COLORS['primary']),
+                "Atenciones Realizadas": ('Atenciones_Realizadas', "Atenciones Realizadas", COLORS['success']),
+                "Atenciones Pendientes": ('Atenciones_Pendientes', "Atenciones Pendientes", COLORS['warning']),
+                "Productividad Promedio": ('Productividad_Promedio', "Productividad Promedio (Atenciones/Profesional)", COLORS['info']),
+                "Tasa de Cumplimiento": ('Tasa_Cumplimiento', "Tasa de Cumplimiento (%)", COLORS['success']),
+                "Profesionales Activos": ('Profesionales_Activos', "Profesionales Activos por Día", COLORS['primary'])
+            }
+            
+            campo_y, titulo, color = campos_dict[metrica_tendencia]
+            
+            if "Línea" in tipo_grafica and "Barras" not in tipo_grafica:
+                fig_tendencia = go.Figure()
+                fig_tendencia.add_trace(go.Scatter(
+                    x=data['tendencias']['Fecha'],
+                    y=data['tendencias'][campo_y],
+                    mode='lines+markers',
+                    name=titulo,
+                    line=dict(color=color, width=3),
+                    marker=dict(size=10),
+                    fill='tozeroy',
+                    fillcolor=f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.2)"
+                ))
+                fig_tendencia.update_layout(title=titulo, height=450, hovermode='x unified')
+            
+            elif tipo_grafica == "📊 Barras":
+                fig_tendencia = px.bar(
+                    data['tendencias'],
+                    x='Fecha',
+                    y=campo_y,
+                    title=titulo,
+                    color=campo_y,
+                    color_continuous_scale='Blues'
+                )
+                fig_tendencia.update_layout(height=450, showlegend=False)
+            
+            elif tipo_grafica == "📉 Área":
+                fig_tendencia = px.area(
+                    data['tendencias'],
+                    x='Fecha',
+                    y=campo_y,
+                    title=titulo,
+                    color_discrete_sequence=[color]
+                )
+                fig_tendencia.update_layout(height=450)
+        
+        if fig_tendencia:
+            st.plotly_chart(fig_tendencia, use_container_width=True)
+        
+        # Métricas resumen
+        st.markdown("### 📊 Resumen del Período")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            total = data['tendencias']['Total_Atenciones'].sum()
+            st.metric("Total Atenciones", f"{int(total):,}")
+        
+        with col2:
+            promedio = data['tendencias']['Total_Atenciones'].mean()
+            st.metric("Promedio Diario", f"{promedio:.1f}")
+        
+        with col3:
+            realizadas = data['tendencias']['Atenciones_Realizadas'].sum()
+            st.metric("Total Realizadas", f"{int(realizadas):,}")
+        
+        with col4:
+            cumplimiento = data['tendencias']['Tasa_Cumplimiento'].mean()
+            st.metric("Cumplimiento Promedio", f"{cumplimiento:.1f}%")
+    
+    else:
+        st.info("No hay datos de tendencias para el período seleccionado")
+    
+    render_section_divider()
+    
+    # =======================================================================
+    # TOP PROFESIONALES
+    # =======================================================================
+    render_section_banner("🏆", "Top Profesionales por Atenciones", rango_fechas)
+    
+    if not data['top_profesionales'].empty:
+        top_n = st.slider(
+            "Cantidad a mostrar:",
+            min_value=5,
+            max_value=20,
+            value=15,
+            step=5,
+            key="slider_top_prof"
+        )
+        
+        datos_mostrar = data['top_profesionales'].head(top_n)
+        
+        fig_top = px.bar(
+            datos_mostrar,
             x='Total_Atenciones',
             y='Profesional',
             orientation='h',
-            color='Porcentaje_Carga',
+            color='Total_Atenciones',
             color_continuous_scale='Blues',
-            hover_data={'Porcentaje_Carga': ':.1f'}
+            title=f"Top {top_n} Profesionales"
         )
-        
-        fig_carga.update_layout(
-            height=600,
+        fig_top.update_layout(
+            height=max(400, len(datos_mostrar) * 30),
             yaxis={'categoryorder':'total ascending'},
-            xaxis_title="Total de Atenciones",
-            yaxis_title="Profesional"
+            showlegend=False
         )
+        st.plotly_chart(fig_top, use_container_width=True)
         
-        st.plotly_chart(fig_carga, use_container_width=True)
-        
-        # Análisis de carga
-        promedio_atenciones = data['distribucion_carga']['Total_Atenciones'].mean()
-        max_atenciones = data['distribucion_carga']['Total_Atenciones'].max()
-        profesional_max = data['distribucion_carga'].loc[
-            data['distribucion_carga']['Total_Atenciones'].idxmax()
-        ]
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Promedio por Profesional", f"{promedio_atenciones:.0f}")
-        with col2:
-            st.metric("Carga Máxima", f"{int(max_atenciones):,}")
-        with col3:
-            st.metric("Profesional con Mayor Carga", profesional_max['Profesional'])
-        
-        st.dataframe(
-            data['distribucion_carga'],
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        st.info("No hay datos de distribución de carga")
-    
-    render_section_divider()
-    
-    # =======================================================================
-    # NUEVA SECCIÓN: PRODUCTIVIDAD
-    # =======================================================================
-    render_section_banner("📊", "Productividad de Profesionales (Top 15)")
-    
-    if not data['productividad'].empty:
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            fig_prod = go.Figure()
+        with st.expander("📋 Ver tabla detallada"):
+            st.dataframe(datos_mostrar, use_container_width=True, hide_index=True)
             
-            fig_prod.add_trace(go.Bar(
-                name='Realizadas',
-                x=data['productividad']['Profesional'],
-                y=data['productividad']['Realizadas'],
-                marker_color=COLORS['success']
-            ))
-            
-            fig_prod.add_trace(go.Bar(
-                name='Pendientes',
-                x=data['productividad']['Profesional'],
-                y=data['productividad']['Pendientes'],
-                marker_color=COLORS['warning']
-            ))
-            
-            fig_prod.update_layout(
-                barmode='stack',
-                height=500,
-                xaxis_title="Profesional",
-                yaxis_title="Cantidad de Atenciones",
-                xaxis={'tickangle': -45}
+            csv = datos_mostrar.to_csv(index=False, encoding='utf-8-sig')
+            st.download_button(
+                label="📥 Descargar CSV",
+                data=csv,
+                file_name=f"top_profesionales_{fecha_inicio}_{fecha_fin}.csv",
+                mime="text/csv"
             )
-            
-            st.plotly_chart(fig_prod, use_container_width=True)
-        
-        with col2:
-            st.markdown("### 🏆 Top 3 Cumplimiento")
-            top_3 = data['productividad'].nlargest(3, 'Porcentaje_Cumplimiento')
-            
-            for idx, row in top_3.iterrows():
-                st.metric(
-                    label=row['Profesional'][:15] + '...' if len(row['Profesional']) > 15 else row['Profesional'],
-                    value=f"{row['Porcentaje_Cumplimiento']:.1f}%",
-                    delta=f"{int(row['Realizadas'])}/{int(row['Total_Atenciones'])}"
-                )
-        
-        # Tabla completa
-        st.dataframe(
-            data['productividad'],
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        st.info("No hay datos de productividad")
-    
-    render_section_divider()
-    
-    # =======================================================================
-    # NUEVA SECCIÓN: ATENCIONES POR SERVICIO
-    # =======================================================================
-    render_section_banner("🏥", "Distribución de Atenciones por Servicio")
-    
-    if not data['por_servicio'].empty:
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            fig_servicio = px.pie(
-                data['por_servicio'],
-                values='Total_Atenciones',
-                names='Servicio',
-                title="Top 10 Servicios",
-                color_discrete_sequence=[
-                    COLORS['primary'], COLORS['info'], COLORS['success'],
-                    COLORS['warning'], COLORS['secondary'], COLORS['danger'],
-                    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A'
-                ]
-            )
-            
-            fig_servicio.update_traces(textposition='inside', textinfo='percent+label')
-            fig_servicio.update_layout(height=500)
-            st.plotly_chart(fig_servicio, use_container_width=True)
-        
-        with col2:
-            st.markdown("### 📊 Top 5 Servicios")
-            for idx, row in data['por_servicio'].head(5).iterrows():
-                total = int(row['Total_Atenciones'])
-                porcentaje = (total / data['por_servicio']['Total_Atenciones'].sum()) * 100
-                st.metric(
-                    label=row['Servicio'][:20] + '...' if len(row['Servicio']) > 20 else row['Servicio'],
-                    value=f"{total:,}",
-                    delta=f"{porcentaje:.1f}%"
-                )
-        
-        st.dataframe(
-            data['por_servicio'],
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        st.info("No hay datos por servicio")
-    
-    render_section_divider()
-    
-    # =======================================================================
-    # TOP PROFESIONALES (TABLA EXISTENTE)
-    # =======================================================================
-    render_section_banner("👥", "Ranking de Profesionales")
-    
-    if not data['top_profesionales'].empty:
-        st.dataframe(
-            data['top_profesionales'],
-            use_container_width=True,
-            hide_index=True
-        )
     else:
         st.info("No hay datos de profesionales")
     
-    # Footer
     render_footer()

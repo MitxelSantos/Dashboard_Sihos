@@ -1,322 +1,226 @@
-# 🏥 Dashboard SIHOS 2.0
+# Dashboard SIHOS
 
 ## Hospital Regional Alfonso Jaramillo Salazar
-### Sistema de Información Hospitalaria - Dashboard en Tiempo Real
+**Sistema de Información Hospitalaria — Líbano, Tolima**
 
 ---
 
-## 📋 Descripción
+## Descripción
 
-Dashboard moderno y centralizado para visualización de datos hospitalarios con navegación por pestañas, diseño responsive y arquitectura modular.
-
----
-
-## ✨ Características
-
-- 🎨 **Diseño Moderno**: Glassmorphism, gradientes, animaciones
-- 📱 **Responsive**: Optimizado para Desktop, Tablet y Móvil
-- 🌓 **Tema Claro/Oscuro**: Switch entre temas
-- 🧩 **Modular**: Código centralizado y reutilizable
-- ⚡ **Rápido**: Cache inteligente y optimización
-- 🎯 **Navegación por Tabs**: Todo en una sola vista
-- 🔒 **Seguro**: Conexión read-only a BD
+Dashboard centralizado en tiempo real para visualización de indicadores hospitalarios. Construido con Streamlit sobre la base de datos MySQL de SIHOS.
 
 ---
 
-## 🚀 Instalación Rápida
+## Características
 
-### **Prerrequisitos:**
-- Python 3.8+
-- MySQL/MariaDB
-- Streamlit
-
-### **Pasos:**
-
-```bash
-# 1. Clonar/Descargar
-cd D:\Miguel_Santos\CODE\Dashboard_SIHOS
-
-# 2. Instalar dependencias
-pip install -r requirements.txt
-
-# 3. Configurar BD (si es necesario)
-# Edita config/settings.py con tus credenciales
-
-# 4. Ejecutar
-streamlit run app.py
-```
+- **Login con roles** — admin, gerencia, calidad. Cada rol ve solo las pestañas autorizadas.
+- **Credenciales seguras** — ninguna contraseña en el código fuente; todo en `.streamlit/secrets.toml` (excluido de git).
+- **Auto-refresh** — actualización automática cada 5 minutos.
+- **Módulos independientes** — cada pestaña es un módulo separado en `modules/`.
+- **Conexión read-only** a MySQL SIHOS.
 
 ---
 
-## 📁 Estructura del Proyecto
+## Módulos disponibles
+
+| Pestaña | Roles con acceso |
+|---|---|
+| Home | Todos |
+| Admisiones | admin, gerencia |
+| Facturación | admin, gerencia |
+| Procedimientos | admin, calidad |
+| Cirugías | admin, calidad |
+| Ocupación | Todos |
+| Profesionales | admin, gerencia |
+| Consultas SQL | admin |
+
+---
+
+## Estructura del proyecto
 
 ```
 Dashboard_SIHOS/
-├── app.py                    # Aplicación principal
+├── app.py                        # Entrada principal, login, routing por tabs
 ├── config/
-│   └── settings.py          # Configuración central
+│   └── settings.py               # PAGE_TITLE, TABS_CONFIG, TAB_ORDER, COLORS
+├── modules/                      # Un archivo por pestaña
+│   ├── home.py
+│   ├── admisiones.py
+│   ├── facturacion.py
+│   ├── procedimientos.py
+│   ├── cirugias.py
+│   ├── ocupacion.py
+│   ├── profesionales.py
+│   └── consultas_sql.py
+├── components/
+│   ├── layout.py                 # Header, Sidebar, Footer
+│   └── widgets.py                # Métricas y componentes reutilizables
+├── utils/
+│   ├── db_connector.py           # Conexión MySQL (lee de secrets.toml)
+│   ├── queries.py                # Queries centralizadas
+│   └── charts.py                 # Helpers de gráficas
 ├── assets/
 │   ├── logo.png
 │   ├── base.css
 │   ├── layout.css
 │   └── components.css
-├── components/
-│   ├── layout.py            # Header, Sidebar, Footer
-│   └── widgets.py           # Métricas, Banners
-├── pages/
-│   ├── admisiones.py
-│   ├── facturacion.py
-│   ├── medicamentos.py
-│   ├── procedimientos.py
-│   └── historia_clinica.py
-└── utils/
-    ├── db_connector.py
-    ├── queries.py
-    ├── charts.py
-    └── helpers.py
+└── .streamlit/
+    ├── config.toml               # Tema Streamlit (en git)
+    └── secrets.toml              # Credenciales (NO en git)
 ```
 
 ---
 
-## 🎯 Módulos Disponibles
+## Instalación local
 
-1. **🏥 Admisiones** - Análisis de admisiones hospitalarias
-2. **💰 Facturación** - Control de facturación
-3. **💊 Medicamentos** - Prescripciones y medicamentos
-4. **🔬 Procedimientos** - Registro de procedimientos
-5. **📋 Historia Clínica** - Consulta de historias
+### Prerrequisitos
+- Python 3.11+
+- Acceso a MySQL SIHOS (red local o IP pública)
 
----
+### Pasos
 
-## ⚙️ Configuración
-
-Toda la configuración está centralizada en `config/settings.py`:
-
-```python
-# Personalizar colores
-COLORS = {
-    "primary": "#2D6A4F",
-    "secondary": "#52B788",
-    # ...
-}
-
-# Configurar BD
-DB_CONFIG = {
-    "host": "localhost",
-    "database": "SIHOS",
-    # ...
-}
-
-# Otras configuraciones
-CACHE_TTL = 300
-DEFAULT_THEME = "light"
-```
-
----
-
-## 🎨 Personalización
-
-### **Colores:**
-Edita `config/settings.py`:
-```python
-COLORS = {
-    "primary": "#TU_COLOR",
-    # ...
-}
-```
-
-### **Logo:**
-Reemplaza `assets/logo.png` con tu logo
-
-### **Estilos:**
-Edita archivos CSS en `assets/`:
-- `base.css` - Variables y fundamentos
-- `layout.css` - Estructura
-- `components.css` - Componentes
-
----
-
-## 📊 Agregar Nueva Página
-
-1. **Crear archivo:**
-```python
-# pages/mi_nueva_pagina.py
-
-def render_mi_nueva_pagina():
-    # Sidebar
-    def render_filters():
-        st.markdown("## 🔍 Filtros")
-        # Tus filtros aquí
-    
-    with st.sidebar:
-        sidebar_wrapper(render_filters)
-    
-    # Contenido
-    render_section_banner("🎯", "Mi Nueva Página")
-    # Tu contenido aquí
-```
-
-2. **Registrar en settings.py:**
-```python
-TABS = {
-    # ...
-    "mi_nueva": {
-        "icon": "🎯",
-        "title": "Mi Nueva Página",
-        "description": "Descripción"
-    }
-}
-
-TAB_ORDER = [..., "mi_nueva"]
-```
-
-3. **Importar en app.py:**
-```python
-from pages.mi_nueva_pagina import render_mi_nueva_pagina
-
-tab_functions = {
-    # ...
-    "mi_nueva": render_mi_nueva_pagina,
-}
-```
-
----
-
-## 🔧 Mantenimiento
-
-### **Limpiar Cache:**
 ```bash
-streamlit cache clear
-```
+# 1. Clonar
+git clone https://github.com/MitxelSantos/Dashboard_Sihos.git
+cd Dashboard_Sihos
 
-### **Reiniciar:**
-```bash
-Ctrl + C
+# 2. Entorno virtual
+python -m venv venv
+source venv/bin/activate        # Linux/Mac
+venv\Scripts\activate           # Windows
+
+# 3. Dependencias
+pip install -r requirements.txt
+
+# 4. Crear secrets.toml (ver sección siguiente)
+
+# 5. Ejecutar
 streamlit run app.py
 ```
 
-### **Actualizar Datos:**
-Click en "🔄 Actualizar Datos" en sidebar
-
 ---
 
-## 📱 Responsive
+## Configuración de credenciales
 
-El dashboard está optimizado para:
+Crea el archivo `.streamlit/secrets.toml` (nunca se sube a git):
 
-- **Desktop** (1920x1080+): Todas las características
-- **Tablet** (1024x768): Ajustes en tamaño
-- **Móvil** (375x667+): Layout vertical, tabs apilados
+```toml
+[database]
+host     = "172.16.2.5"       # IP local  |  IP pública en VPS
+port     = 3306
+database = "sihos"
+user     = "usuario_readonly"
+password = "contraseña"
+charset  = "utf8mb4"
 
----
+[usuarios.admin]
+password = "tu_clave"
+rol = "admin"
 
-## 🐛 Troubleshooting
+[usuarios.gerencia]
+password = "tu_clave"
+rol = "gerencia"
 
-### **Error: ModuleNotFoundError**
-```bash
-# Verifica __init__.py
-touch config/__init__.py
-touch components/__init__.py
-touch pages/__init__.py
+[usuarios.calidad]
+password = "tu_clave"
+rol = "calidad"
+
+[roles]
+admin    = ["home", "admisiones", "facturacion", "procedimientos", "cirugias", "ocupacion", "profesionales", "consultas_sql"]
+gerencia = ["home", "admisiones", "facturacion", "ocupacion", "profesionales"]
+calidad  = ["home", "procedimientos", "cirugias", "ocupacion"]
 ```
 
-### **Logo no aparece**
+> Para agregar usuarios o cambiar permisos: edita solo `secrets.toml`, sin tocar código.
+
+---
+
+## Despliegue en VPS (AlmaLinux 8 / WHM)
+
+### 1. Verificar conectividad MySQL desde el VPS
 ```bash
-# Verifica ruta
-ls assets/logo.png
+mysql -u rvargasri -p -h 190.65.221.22 -P 3306 sihos
 ```
 
-### **CSS no se aplica**
+### 2. Instalar dependencias en el VPS
 ```bash
-# Limpia cache
-streamlit cache clear
+dnf install python3.11 python3.11-pip git -y
 ```
 
-### **BD no conecta**
-- Verifica credenciales en `config/settings.py`
-- Verifica que el servidor MySQL esté corriendo
-- Verifica permisos de usuario
+### 3. Clonar y configurar
+```bash
+git clone https://github.com/MitxelSantos/Dashboard_Sihos.git /home/hospital/dashboard_sihos
+cd /home/hospital/dashboard_sihos
+python3.11 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 4. Crear secrets.toml en el VPS
+```bash
+mkdir -p .streamlit
+nano .streamlit/secrets.toml
+# Igual que el local pero con host = "190.65.221.22"
+```
+
+### 5. Servicio systemd
+```bash
+# /etc/systemd/system/dashboard-sihos.service
+systemctl enable dashboard-sihos
+systemctl start dashboard-sihos
+```
+
+### 6. Virtual host Apache (WHM)
+Proxy desde el subdominio hacia `127.0.0.1:8501` con soporte WebSocket.
 
 ---
 
-## 📈 Rendimiento
+## Agregar un nuevo módulo
 
-- **Cache**: 5 minutos (configurable)
-- **Queries**: Optimizadas con índices
-- **CSS**: Minificado y modular
-- **Images**: Optimizadas y en base64
-
----
-
-## 🔐 Seguridad
-
-- Conexión BD read-only
-- Sin credenciales hardcoded
-- Sanitización de inputs
-- HTTPS recomendado para producción
+1. Crear `modules/nuevo_modulo.py` con función `render_nuevo_modulo()`
+2. Añadir entrada en `TABS_CONFIG` y `TAB_ORDER` en `config/settings.py`
+3. Importar y registrar en `tab_functions` en `app.py`
+4. Añadir el key en los roles que deben verlo en `secrets.toml`
 
 ---
 
-## 📝 Changelog
+## Troubleshooting
+
+**Error de conexión BD**
+- Verificar que el puerto 3306 esté abierto: `Test-NetConnection -ComputerName <IP> -Port 3306`
+- Verificar permisos del usuario MySQL desde la IP del VPS
+
+**secrets.toml no encontrado**
+- Verificar que existe en `.streamlit/secrets.toml` relativo al directorio de ejecución
+
+**WebSocket desconectado en proxy**
+- Asegurarse de que el virtual host tenga configurado el upgrade de WebSocket
+
+---
+
+## Seguridad
+
+- Conexión MySQL con usuario de **solo lectura**
+- Credenciales en `secrets.toml`, excluido de git en `.gitignore`
+- Login con roles antes de cualquier carga de datos
+- HTTPS recomendado en producción (AutoSSL en cPanel)
+
+---
+
+## Changelog
+
+### v2.1 (2026-04-01)
+- Sistema de login con roles (admin, gerencia, calidad)
+- Credenciales movidas a `.streamlit/secrets.toml`
+- Soporte para conexión por IP pública (VPS)
+- `db_connector.py` prioriza `st.secrets` sobre `database.yaml`
 
 ### v2.0 (2025-12-30)
-- ✨ Navegación por tabs
-- 🎨 Diseño moderno y responsive
-- 🧩 Arquitectura modular
-- 🌓 Tema claro/oscuro
-- 📊 Componentes reutilizables
-- ⚡ Mejoras de rendimiento
-
-### v1.0 (2025-XX-XX)
-- 🎉 Versión inicial
+- Navegación por tabs
+- Arquitectura modular (`modules/`)
+- Auto-refresh cada 5 minutos
+- Conexión MySQL con `db_connector.py`
 
 ---
 
-## 👨‍💻 Desarrollo
-
-### **Agregar dependencia:**
-```bash
-pip install nueva_libreria
-pip freeze > requirements.txt
-```
-
-### **Estructura de código:**
-- **DRY**: Don't Repeat Yourself
-- **Modular**: Un archivo = una responsabilidad
-- **Centralizado**: Configuración en un solo lugar
-- **Documentado**: Docstrings en funciones
-
----
-
-## 📚 Documentación Adicional
-
-- [GUIA_MIGRACION.md](GUIA_MIGRACION.md) - Cómo migrar del sistema anterior
-- [config/settings.py](config/settings.py) - Configuración detallada
-- [components/layout.py](components/layout.py) - Componentes de layout
-- [components/widgets.py](components/widgets.py) - Widgets reutilizables
-
----
-
-## 🤝 Contribuir
-
-1. Fork el proyecto
-2. Crea branch (`git checkout -b feature/nueva-funcionalidad`)
-3. Commit cambios (`git commit -m 'Agregar nueva funcionalidad'`)
-4. Push a branch (`git push origin feature/nueva-funcionalidad`)
-5. Abre Pull Request
-
----
-
-## 📞 Soporte
-
-Para soporte técnico, contacta al equipo de desarrollo del hospital.
-
----
-
-## 📄 Licencia
-
-© 2025 Hospital Regional Alfonso Jaramillo Salazar. Todos los derechos reservados.
-
----
-
-**¡Gracias por usar el Dashboard SIHOS 2.0!** 🎉
+© 2026 Hospital Regional Alfonso Jaramillo Salazar. Todos los derechos reservados.

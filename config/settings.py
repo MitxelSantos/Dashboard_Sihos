@@ -39,7 +39,7 @@ TABS_CONFIG = {
     },
     "consultas_sql":{
         "name": "consultas_sql",
-        "icon": "👨‍⚕️"
+        "icon": "🖥️"
     }
 }
 

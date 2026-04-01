@@ -1,10 +1,5 @@
 """
-Módulo Admisiones - VERSIÓN 2.0 CORREGIDA Y MEJORADA
-- 9 opciones de distribución (todas corregidas)
-- Layout en columnas (Opción C)
-- 6 tipos de gráficas para distribución
-- 6 tipos de gráficas para tendencias
-- Tabla en expander con descarga Excel
+Módulo Admisiones
 """
 
 import streamlit as st
@@ -30,16 +25,15 @@ from components.layout import render_footer
 
 def render_admisiones():
     """Función principal del módulo de Admisiones"""
-    
-    render_section_banner("🏥", "Análisis de Admisiones")
-    
+
     # Obtener filtros del sidebar
     fecha_inicio = st.session_state.get('sidebar_fecha_inicio', datetime.now().date() - timedelta(days=30))
     fecha_fin = st.session_state.get('sidebar_fecha_fin', datetime.now().date())
     
     # Mostrar rango de fechas
     rango_fechas = get_fecha_rango_texto(fecha_inicio, fecha_fin)
-    st.markdown(f"<div style='text-align: center; color: #6c757d; font-size: 0.85rem; margin-top: -10px; margin-bottom: 15px;'>{rango_fechas}</div>", unsafe_allow_html=True)
+    
+    render_section_banner("🏥", "Análisis de Admisiones", rango_fechas)
     
     # =======================================================================
     # CARGAR DATOS
@@ -58,7 +52,7 @@ def render_admisiones():
                 queries.get_estadisticas_admisiones(), params
             )
             
-            # DISTRIBUCIÓN (9 opciones - todas corregidas)
+            # DISTRIBUCIÓN
             data['dist_tipo_atencion'] = db.execute_query(
                 queries.get_distribucion_tipo_atencion(), params
             )
@@ -87,7 +81,7 @@ def render_admisiones():
                 queries.get_distribucion_via_ingreso(), params
             )
             
-            # TENDENCIAS (con múltiples métricas)
+            # TENDENCIAS
             data['tendencias'] = db.execute_query(
                 queries.get_tendencias_admisiones_completas(), params
             )
@@ -98,6 +92,13 @@ def render_admisiones():
             )
             data['tiempos_estancia'] = db.execute_query(
                 queries.get_tiempos_estancia(), params
+            )
+
+            data['readmisiones'] = db.execute_query(
+                queries.get_readmisiones_30_dias(), params
+            )
+            data['tasa_readmision'] = db.execute_query(
+                queries.get_tasa_readmision_por_servicio(), params
             )
             
         except Exception as e:
@@ -161,12 +162,12 @@ def render_admisiones():
     render_section_divider()
     
     # =======================================================================
-    # SECCIÓN: DISTRIBUCIÓN (LAYOUT OPCIÓN C)
+    # SECCIÓN: DISTRIBUCIÓN
     # =======================================================================
     render_section_banner("📊", "Distribución de Admisiones", rango_fechas)
     
     # Fila 1: Radio buttons
-    col_dist, col_grafica = st.columns([2, 1])
+    col_dist, col_grafica = st.columns([2, 2])
     
     with col_dist:
         opcion_dist = st.radio(
@@ -197,7 +198,7 @@ def render_admisiones():
                 "🌳 Treemap",
                 "🗺️ Funnel"
             ],
-            horizontal=False,
+            horizontal=True,
             key="radio_tipo_grafica_dist"
         )
     
@@ -264,8 +265,8 @@ def render_admisiones():
     # Renderizar distribución si hay datos
     if datos_dist is not None and not datos_dist.empty:
         
-        # Fila 2: Gráfica (60%) + Métricas (40%)
-        col_graf, col_metricas = st.columns([3, 2])
+        # Fila 2: Gráfica (75%) + Métricas (25%)
+        col_graf, col_metricas = st.columns([3, 1])
         
         with col_graf:
             # Crear gráfica según tipo seleccionado
@@ -352,13 +353,11 @@ def render_admisiones():
                 st.plotly_chart(fig_dist, use_container_width=True)
         
         with col_metricas:
-            st.markdown("### 📊 Resumen")
+            st.markdown("#### 🏆 Top 3")
             total = datos_dist[campo_valor].sum()
-            st.metric("Total", f"{int(total):,}")
-            
             # Top 3
             top_3 = datos_dist.nlargest(3, campo_valor)
-            st.markdown("#### 🏆 Top 3")
+            st.markdown("")
             for idx, row in top_3.iterrows():
                 porcentaje = (row[campo_valor] / total) * 100
                 st.metric(
@@ -385,20 +384,19 @@ def render_admisiones():
     render_section_divider()
     
     # =======================================================================
-    # SECCIÓN: TENDENCIAS (CON 6 TIPOS DE GRÁFICAS)
+    # SECCIÓN: TENDENCIAS
     # =======================================================================
     render_section_banner("📈", "Tendencias en el Tiempo", rango_fechas)
     
     if not data['tendencias'].empty:
         # Radio buttons para seleccionar QUÉ VER
-        col_metrica, col_tipo = st.columns([2, 1])
+        col_metrica, col_tipo = st.columns([2, 2])
         
         with col_metrica:
             metrica_tendencia = st.radio(
                 "Métrica a visualizar:",
                 [
                     "Total de Admisiones",
-                    "Promedio Diario",
                     "Admisiones por Urgencias",
                     "Admisiones por Hospitalización",
                     "Porcentaje de Ocupación",
@@ -419,7 +417,7 @@ def render_admisiones():
                     "📈 Área Apilada",
                     "📊 Barras + Línea"
                 ],
-                horizontal=False,
+                horizontal=True,
                 key="radio_tipo_grafica"
             )
         
@@ -630,7 +628,7 @@ def render_admisiones():
     render_section_divider()
     
     # =======================================================================
-    # SECCIÓN: TOP DIAGNÓSTICOS (CON CONTROL MEJORADO)
+    # SECCIÓN: TOP DIAGNÓSTICOS
     # =======================================================================
     render_section_banner("🔬", "Top Diagnósticos de Ingreso", rango_fechas)
     
@@ -661,7 +659,7 @@ def render_admisiones():
             orientation='h',
             title=f"{seleccion_top} Diagnósticos CIE-10 Más Frecuentes",
             color='Total',
-            color_continuous_scale='Reds'
+            color_continuous_scale='Greens'
         )
         fig_diag.update_layout(
             height=max(400, len(datos_mostrar) * 25),
@@ -721,6 +719,85 @@ def render_admisiones():
                 )
     else:
         st.info("No hay datos de tiempos de estancia")
+
+    render_section_divider()
+
+    # =======================================================================
+    # READMISIONES EN MENOS DE 30 DÍAS
+    # =======================================================================
+    render_section_banner("🔄", "Readmisiones en menos de 30 Días", rango_fechas)
+
+    if not data['readmisiones'].empty:
+        # Control de visualización con Selectbox
+        opciones_top = ['Top 10', 'Top 20', 'Top 50', 'Mostrar Todos']
+        seleccion_top = st.selectbox(
+            "Cantidad a mostrar:",
+            opciones_top,
+            key="select_top_readmisiones"
+        )
+        
+        # Determinar cuántos mostrar
+        if seleccion_top == 'Top 10':
+            datos_mostrar = data['readmisiones'].head(10)
+        elif seleccion_top == 'Top 20':
+            datos_mostrar = data['readmisiones'].head(20)
+        elif seleccion_top == 'Top 50':
+            datos_mostrar = data['readmisiones'].head(50)
+        else:
+            datos_mostrar = data['readmisiones']
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Gráfico de pacientes con más readmisiones
+            fig = px.bar(
+                datos_mostrar,
+                x='Total_Readmisiones',
+                y='Paciente',
+                orientation='h',
+                color='Total_Readmisiones',
+                color_continuous_scale='Greens',
+                title=f"{seleccion_top} Pacientes Readmitidos"
+            )
+            fig.update_layout(
+                height=max(400, len(datos_mostrar) * 20),
+                yaxis={'categoryorder':'total ascending'}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # Tasa de readmisión por servicio
+            if not data['tasa_readmision'].empty:
+                fig2 = px.bar(
+                    data['tasa_readmision'].head(10),
+                    x='Tasa_Readmision',
+                    y='Servicio',
+                    orientation='h',
+                    color='Tasa_Readmision',
+                    color_continuous_scale='YlOrRd',
+                    title="Tasa de Readmisión por Servicio"
+                )
+                fig2.update_layout(height=400, yaxis={'categoryorder':'total ascending'})
+                st.plotly_chart(fig2, use_container_width=True)
+        
+        # Tabla detallada
+        with st.expander("📋 Ver tabla detallada"):
+            st.dataframe(
+                datos_mostrar,
+                use_container_width=True,
+                hide_index=True
+            )
+
+            csv = datos_mostrar.to_csv(index=False, encoding='utf-8-sig')
+            st.download_button(
+                label="📥 Descargar CSV",
+                data=csv,
+                file_name=f"top_readmisiones_{fecha_inicio}_{fecha_fin}.csv",
+                mime="text/csv"
+            )
+        
+    else:
+        st.info("No hay datos de readmisiones")
     
     # Footer
     render_footer()

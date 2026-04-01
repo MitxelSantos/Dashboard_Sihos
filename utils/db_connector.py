@@ -15,29 +15,45 @@ class DatabaseConnector:
     
     def __init__(self, host=None, user=None, password=None, database=None, port=None):
         """Inicializar conector con credenciales"""
-        
-        # PRIORIDAD 1: Leer de database.yaml si existe
-        config_from_yaml = self._load_from_yaml()
-        
-        if config_from_yaml:
-            # Usar configuración de database.yaml
-            self.host = config_from_yaml.get('host', 'localhost')
-            self.user = config_from_yaml.get('user', 'root')
-            self.password = config_from_yaml.get('password', '')
-            self.database = config_from_yaml.get('database', 'sihos')
-            self.port = config_from_yaml.get('port', 3306)
+
+        # PRIORIDAD 1: st.secrets [database] (local y VPS — nunca va a git)
+        config_from_secrets = self._load_from_secrets()
+
+        if config_from_secrets:
+            self.host     = config_from_secrets.get('host', 'localhost')
+            self.user     = config_from_secrets.get('user', 'root')
+            self.password = config_from_secrets.get('password', '')
+            self.database = config_from_secrets.get('database', 'sihos')
+            self.port     = config_from_secrets.get('port', 3306)
         else:
-            # PRIORIDAD 2: Usar parámetros pasados al constructor
-            # PRIORIDAD 3: Usar sidebar session_state
-            # PRIORIDAD 4: Valores por defecto
-            self.host = host or st.session_state.get('sidebar_host', 'localhost')
-            self.user = user or st.session_state.get('sidebar_user', 'root')
-            self.password = password or st.session_state.get('sidebar_password', '')
-            self.database = database or st.session_state.get('sidebar_database', 'sihos')
-            self.port = port or st.session_state.get('sidebar_puerto', 3306)
+            # PRIORIDAD 2: database.yaml (fallback desarrollo local)
+            config_from_yaml = self._load_from_yaml()
+            if config_from_yaml:
+                self.host     = config_from_yaml.get('host', 'localhost')
+                self.user     = config_from_yaml.get('user', 'root')
+                self.password = config_from_yaml.get('password', '')
+                self.database = config_from_yaml.get('database', 'sihos')
+                self.port     = config_from_yaml.get('port', 3306)
+            else:
+                # PRIORIDAD 3: parámetros / sidebar session_state
+                self.host     = host or st.session_state.get('sidebar_host', 'localhost')
+                self.user     = user or st.session_state.get('sidebar_user', 'root')
+                self.password = password or st.session_state.get('sidebar_password', '')
+                self.database = database or st.session_state.get('sidebar_database', 'sihos')
+                self.port     = port or st.session_state.get('sidebar_puerto', 3306)
         
         self.connection = None
     
+    def _load_from_secrets(self):
+        """Cargar configuración desde st.secrets [database] si existe."""
+        try:
+            db = st.secrets.get("database", None)
+            if db:
+                return dict(db)
+        except Exception:
+            pass
+        return None
+
     def _load_from_yaml(self):
         """Cargar configuración desde database.yaml"""
         yaml_paths = [
