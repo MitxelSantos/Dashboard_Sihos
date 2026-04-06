@@ -103,10 +103,7 @@ st_autorefresh(interval=300_000, limit=None, key="autorefresh_global")
 render_header()
 render_sidebar()
 
-# Mostrar tiempo restante discretamente en el sidebar
-tiempo_restante = 300 - int(tiempo_transcurrido)
 st.sidebar.markdown(f"---")
-st.sidebar.caption(f"🔄 Próxima actualización en: {tiempo_restante // 60:02d}:{tiempo_restante % 60:02d}")
 st.sidebar.markdown(
     f"👤 **{st.session_state.get('usuario_nombre', '')}** "
     f"— `{st.session_state.get('usuario_rol', '')}`"
