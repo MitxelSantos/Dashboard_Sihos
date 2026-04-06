@@ -5,7 +5,10 @@ Auto-refresh global cada 5 minutos + Sistema de Seguridad Login
 
 import streamlit as st
 import time
+from streamlit_autorefresh import st_autorefresh
 from config.settings import PAGE_TITLE, PAGE_ICON, LAYOUT, TABS_CONFIG, TAB_ORDER
+
+SESSION_TIMEOUT = 7200  # 2 horas de inactividad → cierre automático
 from components.layout import render_header, render_sidebar, render_footer
 
 # Importar módulos
@@ -78,16 +81,23 @@ if not st.session_state.autenticado:
     st.stop()  # Detiene la ejecución de todo lo que sigue
 
 # ============================================================================
-# AUTO-REFRESH GLOBAL (Solo si ya está autenticado)
+# AUTO-LOGOUT POR INACTIVIDAD
 # ============================================================================
-if 'last_update' not in st.session_state:
-    st.session_state.last_update = time.time()
+if 'last_activity' not in st.session_state:
+    st.session_state.last_activity = time.time()
 
-tiempo_transcurrido = time.time() - st.session_state.last_update
-
-if tiempo_transcurrido > 300:  # 5 minutos
-    st.session_state.last_update = time.time()
+if time.time() - st.session_state.last_activity > SESSION_TIMEOUT:
+    st.session_state.autenticado = False
+    st.session_state.usuario_rol = None
+    st.warning("Sesión cerrada por inactividad.")
     st.rerun()
+
+st.session_state.last_activity = time.time()
+
+# ============================================================================
+# AUTO-REFRESH GLOBAL CADA 5 MINUTOS (real, sin necesidad de click)
+# ============================================================================
+st_autorefresh(interval=300_000, limit=None, key="autorefresh_global")
 
 # --- HEADER Y SIDEBAR (Solo visibles tras login) ---
 render_header()

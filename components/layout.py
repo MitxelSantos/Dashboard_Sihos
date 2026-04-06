@@ -433,7 +433,108 @@ def render_header():
     .stTabs [aria-selected="true"] {{
         background: linear-gradient(135deg, {COLORS['primary']} 0%, {COLORS['secondary']} 100%);
         color: white !important;
-        box-shadow: 0 4px 12px rgba(44, 95, 45, 0.3);
+        box-shadow: 0 4px 12px rgba(0, 136, 172, 0.3);
+    }}
+
+    /* =================================================================
+       RESPONSIVE - TABLET (max 1024px)
+       ================================================================= */
+    @media (max-width: 1024px) {{
+        .header-title {{
+            font-size: 1.3rem !important;
+        }}
+        .header-subtitle {{
+            font-size: 0.75rem !important;
+        }}
+        .header-date {{
+            font-size: 0.85rem !important;
+            padding: 0.5rem 0.75rem !important;
+        }}
+        .custom-header {{
+            height: 100px;
+            padding: 0 1rem;
+        }}
+        .main .block-container {{
+            padding-top: 120px !important;
+        }}
+        [data-testid="stSidebar"] {{
+            padding-top: 115px !important;
+        }}
+    }}
+
+    /* =================================================================
+       RESPONSIVE - MÓVIL (max 768px)
+       ================================================================= */
+    @media (max-width: 768px) {{
+        .custom-header {{
+            height: auto !important;
+            min-height: 70px;
+            padding: 0.6rem 0.75rem;
+            position: fixed;
+        }}
+        .header-content {{
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }}
+        .header-left {{
+            gap: 0.75rem;
+            flex: 1;
+        }}
+        .header-logo {{
+            width: 44px !important;
+            height: 44px !important;
+            padding: 5px !important;
+        }}
+        .header-logo-placeholder {{
+            width: 44px !important;
+            height: 44px !important;
+            font-size: 1.6rem !important;
+        }}
+        .header-title {{
+            font-size: 0.95rem !important;
+            letter-spacing: 0px !important;
+        }}
+        .header-subtitle {{
+            font-size: 0.68rem !important;
+            display: none;
+        }}
+        .header-date {{
+            display: none !important;
+        }}
+        .main .block-container {{
+            padding-top: 90px !important;
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+        }}
+        [data-testid="stSidebar"] {{
+            padding-top: 85px !important;
+        }}
+        .stTabs [data-baseweb="tab"] {{
+            padding: 0.6rem 0.75rem !important;
+            font-size: 0.8rem !important;
+        }}
+        .metric-card {{
+            padding: 1.25rem 1rem !important;
+        }}
+        .metric-icon {{
+            font-size: 2.2rem !important;
+        }}
+    }}
+
+    /* =================================================================
+       RESPONSIVE - MÓVIL PEQUEÑO (max 480px)
+       ================================================================= */
+    @media (max-width: 480px) {{
+        .header-title {{
+            font-size: 0.82rem !important;
+        }}
+        .header-logo {{
+            width: 36px !important;
+            height: 36px !important;
+        }}
+        .section-banner h2 {{
+            font-size: 1rem !important;
+        }}
     }}
     </style>
     """, unsafe_allow_html=True)

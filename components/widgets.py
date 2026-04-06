@@ -37,7 +37,7 @@ def render_metric_card(emoji, title, value, color_start=None, color_end=None):
     <div style="text-align: center;">
         <div class="metric-icon">{emoji}</div>
         <div class="metric-label">{title}</div>
-        <div style="font-size: 2.5rem; font-weight: 700; background: linear-gradient(135deg, {color_start} 0%, {color_end} 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{value}</div>
+        <div style="font-size: 2.5rem; font-weight: 700; color: {color_start};">{value}</div>
     </div>
 </div>
 """, unsafe_allow_html=True)

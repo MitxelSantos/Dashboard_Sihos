@@ -57,9 +57,9 @@ TAB_ORDER = [
 
 # Colores institucionales
 COLORS = {
-    'primary': '#2C5F2D',      # Verde institucional
-    'secondary': '#97BC62',    # Verde claro
-    'success': '#4CAF50',      # Verde éxito
+    'primary': '#0088AC',      # Azul institucional
+    'secondary': '#77BD47',    # Verde claro institucional
+    'success': '#16A01C',      # Verde oscuro institucional
     'info': '#2196F3',         # Azul información
     'warning': '#FF9800',      # Naranja advertencia
     'danger': '#F44336',       # Rojo peligro
