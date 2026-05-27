@@ -12,13 +12,14 @@ class SIHOSQueries:
     def get_estadisticas_admisiones_hoy(self):
         """Estadísticas del día actual"""
         return """
-        SELECT 
+        SELECT
             COUNT(*) as Total_Admisiones,
             COUNT(CASE WHEN Cerrado = 2 THEN 1 END) as Activas,
             COUNT(CASE WHEN Cerrado = 1 THEN 1 END) as Cerradas,
-            COUNT(CASE WHEN TipoAten = 1 THEN 1 END) as Urgencias,
+            COUNT(CASE WHEN TipoAten = 3 THEN 1 END) as Urgencias,
             COUNT(CASE WHEN TipoAten = 2 THEN 1 END) as Hospitalizacion,
-            COUNT(CASE WHEN TipoAten = 3 THEN 1 END) as Consulta_Externa
+            COUNT(CASE WHEN TipoAten = 1 THEN 1 END) as Consulta_Externa,
+            COUNT(CASE WHEN TipoAten = 4 THEN 1 END) as PyP
         FROM Admision
         WHERE DATE(FechIngr) = CURDATE()
             AND Anulado = 2
@@ -27,11 +28,13 @@ class SIHOSQueries:
     def get_estadisticas_admisiones(self):
         """Estadísticas de admisiones con parámetros de fecha"""
         return """
-        SELECT 
+        SELECT
             COUNT(*) as Total_Admisiones,
             COUNT(CASE WHEN Cerrado = 2 THEN 1 END) as Activas,
-            COUNT(CASE WHEN TipoAten = 1 THEN 1 END) as Urgencias,
-            COUNT(CASE WHEN TipoAten = 2 THEN 1 END) as Hospitalizacion
+            COUNT(CASE WHEN TipoAten = 3 THEN 1 END) as Urgencias,
+            COUNT(CASE WHEN TipoAten = 2 THEN 1 END) as Hospitalizacion,
+            COUNT(CASE WHEN TipoAten = 1 THEN 1 END) as Consulta_Externa,
+            COUNT(CASE WHEN TipoAten = 4 THEN 1 END) as PyP
         FROM Admision
         WHERE FechIngr BETWEEN :fecha_inicio AND :fecha_fin
             AND Anulado = 2
@@ -40,12 +43,12 @@ class SIHOSQueries:
     def get_distribucion_tipo_atencion(self):
         """Distribución por tipo de atención"""
         return """
-        SELECT 
-            CASE 
-                WHEN TipoAten = 1 THEN 'Urgencias'
+        SELECT
+            CASE
+                WHEN TipoAten = 1 THEN 'Consulta Externa'
                 WHEN TipoAten = 2 THEN 'Hospitalización'
-                WHEN TipoAten = 3 THEN 'Consulta Externa'
-                WHEN TipoAten = 4 THEN 'Otro'
+                WHEN TipoAten = 3 THEN 'Urgencias'
+                WHEN TipoAten = 4 THEN 'Promoción y Prevención'
                 ELSE 'Otro'
             END as Tipo_Atencion,
             COUNT(*) as Total
@@ -64,7 +67,7 @@ class SIHOSQueries:
             COUNT(*) as Total_Admisiones,
             COUNT(CASE WHEN a.Cerrado = 2 THEN 1 END) as Activas,
             COUNT(CASE WHEN a.Cerrado = 1 THEN 1 END) as Cerradas,
-            COUNT(CASE WHEN a.TipoAten = 1 THEN 1 END) as Urgencias,
+            COUNT(CASE WHEN a.TipoAten = 3 THEN 1 END) as Urgencias,
             COUNT(CASE WHEN a.TipoAten = 2 THEN 1 END) as Hospitalizacion,
             ROUND(AVG(DATEDIFF(COALESCE(a.FechEgre, CURDATE()), a.FechIngr)), 1) as Promedio_Estancia
         FROM Admision a
@@ -230,12 +233,12 @@ class SIHOSQueries:
         SELECT 
             DATE(FechIngr) as Fecha,
             COUNT(*) as Total_Admisiones,
-            COUNT(CASE WHEN TipoAten = 1 THEN 1 END) as Urgencias,
+            COUNT(CASE WHEN TipoAten = 3 THEN 1 END) as Urgencias,
             COUNT(CASE WHEN TipoAten = 2 THEN 1 END) as Hospitalizacion,
-            COUNT(CASE WHEN TipoAten = 3 THEN 1 END) as Consulta_Externa,
+            COUNT(CASE WHEN TipoAten = 1 THEN 1 END) as Consulta_Externa,
             ROUND(COUNT(*) / 1.0, 1) as Promedio_Diario,
-            ROUND((COUNT(CASE WHEN TipoAten = 2 AND Cerrado = 2 THEN 1 END) / 
-                (SELECT COUNT(*) FROM CodiCama WHERE Activa = 1)) * 100, 1) as Porcentaje_Ocupacion
+            ROUND((COUNT(CASE WHEN TipoAten = 2 AND Cerrado = 2 AND Anulado = 2 THEN 1 END) /
+                (SELECT COUNT(*) FROM CodiCama WHERE Activa = 1 AND Habilita = 1)) * 100, 1) as Porcentaje_Ocupacion
         FROM Admision
         WHERE FechIngr BETWEEN :fecha_inicio AND :fecha_fin
             AND Anulado = 2
@@ -348,31 +351,45 @@ class SIHOSQueries:
     # ========================================================================
     
     def get_facturacion_hoy(self):
-        """Facturación del día actual"""
+        """Facturación del día actual — fuente: DetaFact (valor real por ítems)"""
         return """
-        SELECT 
-            COUNT(*) as Total_Facturas,
-            SUM(ValoTota) as Valor_Total,
-            AVG(ValoTota) as Promedio_Factura,
-            MAX(ValoTota) as Factura_Mayor
-        FROM EncaFact
-        WHERE DATE(FechFact) = CURDATE()
-            AND Anulado = 0
-            AND ValoTota > 0
+        SELECT
+            COALESCE(SUM(df.ValoTota), 0) AS Valor_Total,
+            COUNT(DISTINCT CONCAT(ef.CodiInst, ef.CodiAno, ef.CodiDocu, ef.NumeFact)) AS Total_Facturas,
+            ROUND(
+                COALESCE(SUM(df.ValoTota), 0)
+                / NULLIF(COUNT(DISTINCT CONCAT(ef.CodiInst, ef.CodiAno, ef.CodiDocu, ef.NumeFact)), 0)
+            , 0) AS Promedio_Factura,
+            MAX(df.ValoTota) AS Factura_Mayor
+        FROM DetaFact df
+        JOIN EncaFact ef
+            ON  ef.CodiInst = df.CodiInst
+            AND ef.CodiAno  = df.CodiAno
+            AND ef.CodiDocu = df.CodiDocu
+            AND ef.NumeFact = df.NumeFact
+        WHERE ef.Anulado = 0
+          AND DATE(ef.FechFact) = CURDATE()
         """
     
     def get_estadisticas_facturacion(self):
-        """Estadísticas de facturación"""
+        """Estadísticas de facturación — fuente: DetaFact (valor real por ítems)"""
         return """
-        SELECT 
-            COUNT(*) as Total_Facturas,
-            SUM(ValoTota) as Valor_Total,
-            AVG(ValoTota) as Valor_Promedio,
-            MAX(ValoTota) as Valor_Maximo
-        FROM EncaFact
-        WHERE FechFact BETWEEN :fecha_inicio AND :fecha_fin
-            AND Anulado = 0
-            AND ValoTota > 0
+        SELECT
+            COALESCE(SUM(df.ValoTota), 0) AS Valor_Total,
+            COUNT(DISTINCT CONCAT(ef.CodiInst, ef.CodiAno, ef.CodiDocu, ef.NumeFact)) AS Total_Facturas,
+            ROUND(
+                COALESCE(SUM(df.ValoTota), 0)
+                / NULLIF(COUNT(DISTINCT CONCAT(ef.CodiInst, ef.CodiAno, ef.CodiDocu, ef.NumeFact)), 0)
+            , 0) AS Valor_Promedio,
+            MAX(df.ValoTota) AS Valor_Maximo
+        FROM DetaFact df
+        JOIN EncaFact ef
+            ON  ef.CodiInst = df.CodiInst
+            AND ef.CodiAno  = df.CodiAno
+            AND ef.CodiDocu = df.CodiDocu
+            AND ef.NumeFact = df.NumeFact
+        WHERE ef.Anulado = 0
+          AND ef.FechFact BETWEEN :fecha_inicio AND :fecha_fin
         """
     
     def get_facturacion_por_rango(self):
@@ -437,19 +454,22 @@ class SIHOSQueries:
     def get_facturacion_por_tipo_documento(self):
         """Facturación por tipo de documento"""
         return """
-        SELECT 
-            CASE 
-                WHEN CodiDocu = 'FE' THEN 'Factura Electrónica'
-                WHEN CodiDocu = 'LIQ' THEN 'Liquidación'
-                WHEN CodiDocu = 'FAC' THEN 'Factura'
-                ELSE CONCAT('Tipo ', CodiDocu)
+        SELECT
+            CASE
+                WHEN TipoDocu = 'CC' THEN 'Cédula de Ciudadanía'
+                WHEN TipoDocu = 'TI' THEN 'Tarjeta de Identidad'
+                WHEN TipoDocu = 'RC' THEN 'Registro Civil'
+                WHEN TipoDocu = 'CN' THEN 'Certificado Nacido Vivo'
+                WHEN TipoDocu = 'CE' THEN 'Cédula de Extranjería'
+                WHEN TipoDocu = 'PA' THEN 'Pasaporte'
+                ELSE CONCAT('Otro (', COALESCE(TipoDocu, 'ND'), ')')
             END as Tipo_Documento,
             COUNT(*) as Total_Facturas,
             SUM(ValoTota) as Valor_Total
         FROM EncaFact
         WHERE FechFact BETWEEN :fecha_inicio AND :fecha_fin
             AND Anulado = 0
-        GROUP BY CodiDocu
+        GROUP BY TipoDocu
         ORDER BY Valor_Total DESC
         """
     
@@ -512,16 +532,20 @@ class SIHOSQueries:
     def get_analisis_cartera(self):
         """Análisis general de cartera"""
         return """
-        SELECT 
-            COUNT(*) as Total_Facturas,
-            SUM(ValoTota) as Valor_Total_Facturado,
-            COUNT(CASE WHEN CodiDocu = 'FE' THEN 1 END) as Facturas_Electronicas,
-            COUNT(CASE WHEN CodiDocu = 'LIQ' THEN 1 END) as Liquidaciones,
-            ROUND(AVG(ValoTota), 0) as Valor_Promedio_Factura,
-            SUM(CASE WHEN ValoTota > 1000000 THEN ValoTota ELSE 0 END) as Valor_Facturas_Altas
-        FROM EncaFact
-        WHERE FechFact BETWEEN :fecha_inicio AND :fecha_fin
-            AND Anulado = 0
+        SELECT
+            COUNT(ef.NumeFact) AS Total_Facturas,
+            SUM(ef.ValoTota) AS Valor_Total_Facturado,
+            COUNT(fe.NumeDocu) AS Facturas_Electronicas,
+            COUNT(CASE WHEN fe.NumeDocu IS NULL THEN 1 END) AS Sin_Factura_Electronica,
+            ROUND(AVG(ef.ValoTota), 0) AS Valor_Promedio_Factura,
+            SUM(CASE WHEN ef.ValoTota > 1000000 THEN ef.ValoTota ELSE 0 END) AS Valor_Facturas_Altas
+        FROM EncaFact ef
+        LEFT JOIN FactElec fe ON fe.CodiInst = ef.CodiInst
+            AND fe.CodiAno = ef.CodiAno
+            AND fe.NumeDocu = ef.NumeFact
+            AND fe.CodiDocu = 'FE'
+        WHERE ef.FechFact BETWEEN :fecha_inicio AND :fecha_fin
+            AND ef.Anulado = 0
         """
     
     def get_indicadores_recaudo(self):
@@ -808,10 +832,10 @@ class SIHOSQueries:
             COALESCE(ce.NombEspe, 'Sin Especialidad') as Especialidad,
             COUNT(*) as Total_Cirugias
         FROM ActoQuir aq
-        INNER JOIN Usuarios u ON aq.MediCiru = u.Login
+        INNER JOIN Usuarios u ON aq.UsuaDigi = u.Login
         LEFT JOIN CodiEspe ce ON u.CodiEspe = ce.CodiEspe
         WHERE aq.FechInic BETWEEN :fecha_inicio AND :fecha_fin
-            AND aq.MediCiru IS NOT NULL
+            AND aq.UsuaDigi IS NOT NULL
         GROUP BY ce.NombEspe
         ORDER BY Total_Cirugias DESC
         LIMIT 15
@@ -920,13 +944,17 @@ class SIHOSQueries:
     def get_ocupacion_actual(self):
         """Ocupación actual de camas"""
         return """
-        SELECT 
-            COUNT(*) as Total_Camas,
-            COUNT(CASE WHEN c.ConsAdmi IS NOT NULL AND c.ConsAdmi != '' THEN 1 END) as Ocupadas,
-            COUNT(CASE WHEN c.ConsAdmi IS NULL OR c.ConsAdmi = '' THEN 1 END) as Libres,
-            ROUND((COUNT(CASE WHEN c.ConsAdmi IS NOT NULL AND c.ConsAdmi != '' THEN 1 END) / COUNT(*)) * 100, 1) as Porcentaje_Ocupacion
+        SELECT
+            COUNT(c.CodiCama) AS Total_Camas,
+            COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) AS Ocupadas,
+            COUNT(c.CodiCama) - COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) AS Libres,
+            ROUND(
+                COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) * 100.0
+                / NULLIF(COUNT(c.CodiCama), 0), 1
+            ) AS Porcentaje_Ocupacion
         FROM CodiCama c
-        WHERE c.Activa = 1
+        LEFT JOIN Admision a ON a.ConsAdmi = c.ConsAdmi
+        WHERE c.Activa = 1 AND c.Habilita = 1
         """
     
     def get_ocupacion_general(self):
@@ -936,18 +964,22 @@ class SIHOSQueries:
     def get_ocupacion_por_servicio(self):
         """Ocupación por servicio"""
         return """
-        SELECT 
-            COALESCE(cs.NombServ, c.CodiServ, 'Sin Servicio') as Servicio,
-            COUNT(*) as Total_Camas,
-            COUNT(CASE WHEN c.ConsAdmi IS NOT NULL AND c.ConsAdmi != '' THEN 1 END) as Ocupadas,
-            ROUND((COUNT(CASE WHEN c.ConsAdmi IS NOT NULL AND c.ConsAdmi != '' THEN 1 END) / COUNT(*)) * 100, 1) as Porcentaje_Ocupacion
+        SELECT
+            COALESCE(cs.NombServ, c.CodiServ, 'Sin Servicio') AS Servicio,
+            COUNT(c.CodiCama) AS Total_Camas,
+            COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) AS Ocupadas,
+            ROUND(
+                COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) * 100.0
+                / NULLIF(COUNT(c.CodiCama), 0), 1
+            ) AS Porcentaje_Ocupacion
         FROM CodiCama c
-        LEFT JOIN CodiServ cs ON c.CodiServ = cs.CodiServ
-        WHERE c.Activa = 1
+        LEFT JOIN Admision a ON a.ConsAdmi = c.ConsAdmi
+        LEFT JOIN CodiServ cs ON cs.CodiServ = c.CodiServ
+        WHERE c.Activa = 1 AND c.Habilita = 1
             AND c.CodiServ IS NOT NULL
             AND c.CodiServ != ''
         GROUP BY c.CodiServ, cs.NombServ
-        ORDER BY Porcentaje_Ocupacion DESC
+        ORDER BY Ocupadas DESC
         """
     
     def get_historico_ocupacion(self):
@@ -975,7 +1007,7 @@ class SIHOSQueries:
             CROSS JOIN CodiCama c
             LEFT JOIN Admision a ON c.ConsAdmi = a.ConsAdmi 
                 AND a.FechIngr <= fechas.Fecha
-                AND (a.FechEgre >= fechas.Fecha OR a.FechEgre IS NULL OR a.FechEgre = '0000-00-00')
+                AND (NULLIF(a.FechEgre, '0000-00-00') >= fechas.Fecha OR NULLIF(a.FechEgre, '0000-00-00') IS NULL)
                 AND a.Cerrado = 2
             WHERE c.Activa = 1
             GROUP BY fechas.Fecha
@@ -991,10 +1023,7 @@ class SIHOSQueries:
             c.NombCama,
             COUNT(DISTINCT a.ConsAdmi) as Veces_Usada,
             ROUND(AVG(DATEDIFF(
-                CASE WHEN a.FechEgre = '0000-00-00' OR a.FechEgre IS NULL 
-                     THEN CURDATE() 
-                     ELSE a.FechEgre 
-                END, 
+                COALESCE(NULLIF(a.FechEgre, '0000-00-00'), CURDATE()),
                 a.FechIngr
             )), 1) as Promedio_Dias_Ocupada
         FROM CodiCama c
@@ -1010,53 +1039,54 @@ class SIHOSQueries:
     def get_distribucion_tipo_cama(self):
         """Distribución por tipo de cama"""
         return """
-        SELECT 
-            CASE TipoCama
-                WHEN 0 THEN 'Tipo 0'
-                WHEN 1 THEN 'Tipo 1'
-                WHEN 2 THEN 'Tipo 2'
-                ELSE 'Otro'
-            END as Tipo,
-            COUNT(*) as Total,
-            COUNT(CASE WHEN ConsAdmi IS NOT NULL AND ConsAdmi != '' THEN 1 END) as Ocupadas
-        FROM CodiCama
-        WHERE Activa = 1
-        GROUP BY TipoCama
+        SELECT
+            COALESCE(c.TipoCama, 'Sin Tipo') AS Tipo,
+            COUNT(c.CodiCama) AS Total,
+            COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) AS Ocupadas
+        FROM CodiCama c
+        LEFT JOIN Admision a ON a.ConsAdmi = c.ConsAdmi
+        WHERE c.Activa = 1 AND c.Habilita = 1
+        GROUP BY c.TipoCama
         ORDER BY Total DESC
         """
     
     def get_ocupacion_por_uci(self):
         """Distribución UCI vs No-UCI"""
         return """
-        SELECT 
-            CASE 
-                WHEN EsUci = 1 THEN 'UCI'
-                ELSE 'No UCI'
-            END as Tipo,
-            COUNT(*) as Total,
-            COUNT(CASE WHEN ConsAdmi IS NOT NULL AND ConsAdmi != '' THEN 1 END) as Ocupadas,
-            ROUND((COUNT(CASE WHEN ConsAdmi IS NOT NULL AND ConsAdmi != '' THEN 1 END) / COUNT(*)) * 100, 1) as Porcentaje_Ocupacion
-        FROM CodiCama
-        WHERE Activa = 1
-        GROUP BY EsUci
+        SELECT
+            CASE WHEN c.EsUci = 1 THEN 'UCI' ELSE 'No UCI' END AS Tipo,
+            COUNT(c.CodiCama) AS Total,
+            COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) AS Ocupadas,
+            ROUND(
+                COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) * 100.0
+                / NULLIF(COUNT(c.CodiCama), 0), 1
+            ) AS Porcentaje_Ocupacion
+        FROM CodiCama c
+        LEFT JOIN Admision a ON a.ConsAdmi = c.ConsAdmi
+        WHERE c.Activa = 1 AND c.Habilita = 1
+        GROUP BY c.EsUci
         ORDER BY Total DESC
         """
     
     def get_alertas_ocupacion(self):
         """Alertas de ocupación por servicio"""
         return """
-        SELECT 
-            COALESCE(cs.NombServ, c.CodiServ, 'Sin Servicio') as Servicio,
-            COUNT(*) as Total_Camas,
-            COUNT(CASE WHEN c.ConsAdmi IS NOT NULL AND c.ConsAdmi != '' THEN 1 END) as Ocupadas,
-            ROUND((COUNT(CASE WHEN c.ConsAdmi IS NOT NULL AND c.ConsAdmi != '' THEN 1 END) / COUNT(*)) * 100, 1) as Porcentaje_Ocupacion
+        SELECT
+            COALESCE(cs.NombServ, c.CodiServ, 'Sin Servicio') AS Servicio,
+            COUNT(c.CodiCama) AS Total_Camas,
+            COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) AS Ocupadas,
+            ROUND(
+                COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) * 100.0
+                / NULLIF(COUNT(c.CodiCama), 0), 1
+            ) AS Porcentaje_Ocupacion
         FROM CodiCama c
-        LEFT JOIN CodiServ cs ON c.CodiServ = cs.CodiServ
-        WHERE c.Activa = 1
+        LEFT JOIN Admision a ON a.ConsAdmi = c.ConsAdmi
+        LEFT JOIN CodiServ cs ON cs.CodiServ = c.CodiServ
+        WHERE c.Activa = 1 AND c.Habilita = 1
             AND c.CodiServ IS NOT NULL
             AND c.CodiServ != ''
         GROUP BY c.CodiServ, cs.NombServ
-        HAVING COUNT(*) > 0
+        HAVING COUNT(c.CodiCama) > 0
         ORDER BY Porcentaje_Ocupacion DESC
         LIMIT 10
         """
@@ -1180,8 +1210,8 @@ class SIHOSQueries:
     def get_atenciones_por_turno_profesional(self):
         """Atenciones por turno"""
         return """
-        SELECT 
-            CASE 
+        SELECT
+            CASE
                 WHEN HOUR(rc.HoraCons) >= 6 AND HOUR(rc.HoraCons) < 14 THEN 'Mañana (6am-2pm)'
                 WHEN HOUR(rc.HoraCons) >= 14 AND HOUR(rc.HoraCons) < 22 THEN 'Tarde (2pm-10pm)'
                 ELSE 'Noche (10pm-6am)'
@@ -1191,10 +1221,180 @@ class SIHOSQueries:
         WHERE rc.FechCons BETWEEN :fecha_inicio AND :fecha_fin
             AND rc.HoraCons IS NOT NULL
         GROUP BY Turno
-        ORDER BY 
+        ORDER BY
             CASE Turno
                 WHEN 'Mañana (6am-2pm)' THEN 1
                 WHEN 'Tarde (2pm-10pm)' THEN 2
                 ELSE 3
             END
+        """
+
+    # ========================================================================
+    # CITAS
+    # ========================================================================
+
+    def get_estadisticas_citas(self):
+        """Métricas globales de citas — solo estados válidos 1-7"""
+        return """
+        SELECT
+            COUNT(*) AS Total_Citas,
+            COUNT(CASE WHEN EstaCita = 1 THEN 1 END) AS Disponibles,
+            COUNT(CASE WHEN EstaCita = 2 THEN 1 END) AS Ocupadas,
+            COUNT(CASE WHEN EstaCita = 3 THEN 1 END) AS Cumplidas,
+            COUNT(CASE WHEN EstaCita IN (4, 5, 7) THEN 1 END) AS Incumplidas,
+            COUNT(CASE WHEN EstaCita = 6 THEN 1 END) AS Canceladas
+        FROM DetaCita
+        WHERE FechCita BETWEEN :fecha_inicio AND :fecha_fin
+          AND EstaCita BETWEEN 1 AND 7
+        """
+
+    def get_distribucion_estado_citas(self):
+        """Distribución por estado de cita con porcentaje (EstaCita 1-7 únicamente)"""
+        return """
+        SELECT
+            ec.NombEsta AS Estado,
+            COUNT(*) AS TotalCitas,
+            ROUND(
+                COUNT(*) * 100.0 / (
+                    SELECT COUNT(*) FROM DetaCita
+                    WHERE FechCita BETWEEN :fecha_inicio AND :fecha_fin
+                      AND EstaCita BETWEEN 1 AND 7
+                ), 2
+            ) AS Porcentaje
+        FROM DetaCita dc
+        JOIN EstaCita ec ON ec.CodiEsta = dc.EstaCita
+        WHERE dc.FechCita BETWEEN :fecha_inicio AND :fecha_fin
+          AND dc.EstaCita BETWEEN 1 AND 7
+        GROUP BY ec.NombEsta
+        ORDER BY TotalCitas DESC
+        """
+
+    def get_oportunidad_espera_solicitud(self):
+        """KPI 1 — Días entre solicitud (FechSoli) y fecha de cita.
+        Filtro por FechSoli en el rango. Valor esperado ~2.5 días.
+        PENDIENTE validación contra SIHOS nativo (29.66 días reportados)."""
+        return """
+        SELECT
+            ROUND(AVG(DATEDIFF(FechCita, FechSoli)), 2) AS PromEsperaSolicitud,
+            COUNT(*) AS TotalCitas
+        FROM DetaCita
+        WHERE FechSoli BETWEEN :fecha_inicio AND :fecha_fin
+          AND EstaCita BETWEEN 1 AND 7
+          AND DATEDIFF(FechCita, FechSoli) >= 0
+        """
+
+    def get_oportunidad_espera_asignacion(self):
+        """KPI 2 — Días entre asignación (FechAsig) y fecha de cita.
+        Filtro por FechCita en el rango. Validado vs SIHOS nativo: ~8.7 días (SIHOS: 7.92 días)."""
+        return """
+        SELECT
+            ROUND(AVG(DATEDIFF(FechCita, FechAsig)), 2) AS PromEsperaAsignacion,
+            COUNT(*) AS TotalCitas
+        FROM DetaCita
+        WHERE FechCita BETWEEN :fecha_inicio AND :fecha_fin
+          AND EstaCita BETWEEN 1 AND 7
+          AND DATEDIFF(FechCita, FechAsig) >= 0
+        """
+
+    # ========================================================================
+    # INTEROPERABILIDAD RDA
+    # ========================================================================
+
+    def get_rda_summary_hoy(self):
+        """Resumen RDA del día actual (para home)"""
+        return """
+        SELECT
+            SUM(CASE WHEN estado_id = 56 THEN 1 ELSE 0 END) AS Enviados,
+            SUM(CASE WHEN estado_id = 57 THEN 1 ELSE 0 END) AS Pendientes,
+            SUM(CASE WHEN estado_id = 58 THEN 1 ELSE 0 END) AS Rechazados,
+            COUNT(*) AS Total
+        FROM EnviRda
+        WHERE deleted_at IS NULL
+          AND DATE(created_at) = CURDATE()
+        """
+
+    def get_rda_summary(self):
+        """Resumen RDA para rango de fechas (para reportes)"""
+        return """
+        SELECT
+            SUM(CASE WHEN estado_id = 56 THEN 1 ELSE 0 END) AS Enviados,
+            SUM(CASE WHEN estado_id = 57 THEN 1 ELSE 0 END) AS Pendientes,
+            SUM(CASE WHEN estado_id = 58 THEN 1 ELSE 0 END) AS Rechazados,
+            COUNT(*) AS Total
+        FROM EnviRda
+        WHERE deleted_at IS NULL
+          AND created_at BETWEEN :fecha_inicio AND :fecha_fin
+        """
+
+    def get_rda_tabla(self, estado_id=None, busqueda=None):
+        """Tabla principal RDA — pivotada por admisión con estado de cada tipo RDA"""
+        filtro_estado = "AND e.estado_id = :estado_id" if estado_id is not None else ""
+        filtro_busqueda = "AND e.ConsAdmi LIKE :busqueda" if busqueda else ""
+        return f"""
+        SELECT
+            e.ConsAdmi                          AS Admision,
+            COALESCE(p.NombUsua, 'Sin datos')   AS Paciente,
+            DATE(MIN(e.created_at))             AS Reportado,
+            MAX(CASE WHEN e.tipo_rda_id = 60
+                THEN CASE e.estado_id
+                    WHEN 56 THEN '🟢 Enviado'
+                    WHEN 57 THEN '🟡 Pendiente'
+                    WHEN 58 THEN '🔴 Rechazado'
+                END END)                        AS RDA_Paciente,
+            MAX(CASE WHEN e.tipo_rda_id = 61
+                THEN CASE e.estado_id
+                    WHEN 56 THEN '🟢 Enviado'
+                    WHEN 57 THEN '🟡 Pendiente'
+                    WHEN 58 THEN '🔴 Rechazado'
+                END END)                        AS RDA_ConsExterna,
+            'No Aplica'                         AS RDA_Urg,
+            'No Aplica'                         AS RDA_Hosp,
+            MAX(e.updated_at)                   AS UltimaActualizacion
+        FROM EnviRda e
+        LEFT JOIN Admision a ON a.ConsAdmi = e.ConsAdmi
+        LEFT JOIN Paciente p ON p.NumeUsua = a.NumeUsua
+        WHERE e.deleted_at IS NULL
+          AND e.created_at BETWEEN :fecha_inicio AND :fecha_fin
+          {filtro_estado}
+          {filtro_busqueda}
+        GROUP BY e.ConsAdmi, p.NombUsua
+        ORDER BY MAX(e.created_at) DESC
+        LIMIT 500
+        """
+
+    def get_rda_detalle(self):
+        """Detalle de envíos RDA por admisión, con número VIDA y mensaje de error del Ministerio"""
+        return """
+        SELECT
+            e.id                AS EnviRda_id,
+            e.ConsAdmi,
+            CASE e.tipo_rda_id
+                WHEN 60 THEN 'RDA Paciente'
+                WHEN 61 THEN 'RDA Consulta Externa'
+                ELSE CONCAT('Tipo ', e.tipo_rda_id)
+            END                 AS TipoRDA,
+            CASE e.estado_id
+                WHEN 56 THEN '🟢 Enviado'
+                WHEN 57 THEN '🟡 Pendiente'
+                WHEN 58 THEN '🔴 Rechazado'
+            END                 AS Estado,
+            e.usuario           AS UsuarioSIHOS,
+            e.created_at        AS FechaEnvio,
+            JSON_UNQUOTE(JSON_EXTRACT(
+                a.json_respuesta,
+                '$.respuesta.entry[0].resource.id'
+            ))                  AS NumeroVIDA,
+            JSON_UNQUOTE(JSON_EXTRACT(
+                a.json_respuesta, '$.http_code'
+            ))                  AS HttpCode,
+            JSON_UNQUOTE(JSON_EXTRACT(
+                a.json_respuesta,
+                '$.respuesta.issue[0].details.coding[0].display'
+            ))                  AS MensajeError,
+            a.created_at        AS FechaRespuesta
+        FROM EnviRda e
+        LEFT JOIN AudiRda a ON a.EnviRda_id = e.id
+        WHERE e.ConsAdmi = :consadmi
+          AND e.deleted_at IS NULL
+        ORDER BY e.tipo_rda_id, a.created_at DESC
         """

@@ -19,6 +19,8 @@ from modules.procedimientos import render_procedimientos
 from modules.cirugias import render_cirugias
 from modules.ocupacion import render_ocupacion
 from modules.profesionales import render_profesionales
+from modules.citas import render_citas
+from modules.reportes import render_reportes
 from modules.consultas_sql import render_consultas_sql
 
 # ============================================================================
@@ -124,6 +126,8 @@ tab_functions = {
     "cirugias": render_cirugias,
     "ocupacion": render_ocupacion,
     "profesionales": render_profesionales,
+    "citas": render_citas,
+    "reportes": render_reportes,
     "consultas_sql": render_consultas_sql
 }
 

@@ -37,6 +37,14 @@ TABS_CONFIG = {
         "name": "Profesionales",
         "icon": "👨‍⚕️"
     },
+    "citas": {
+        "name": "Citas",
+        "icon": "📅"
+    },
+    "reportes": {
+        "name": "Reportes",
+        "icon": "📊"
+    },
     "consultas_sql":{
         "name": "consultas_sql",
         "icon": "🖥️"
@@ -52,6 +60,8 @@ TAB_ORDER = [
     "cirugias",
     "ocupacion",
     "profesionales",
+    "citas",
+    "reportes",
     "consultas_sql"
 ]
 

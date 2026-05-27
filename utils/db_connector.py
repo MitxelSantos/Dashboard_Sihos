@@ -91,7 +91,8 @@ class DatabaseConnector:
                 password=self.password,
                 database=self.database,
                 charset='utf8mb4',
-                collation='utf8mb4_general_ci'
+                collation='utf8mb4_general_ci',
+                init_command="SET SESSION sql_mode=''"
             )
             return self.connection
         except Error as e:

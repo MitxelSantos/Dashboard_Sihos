@@ -37,6 +37,7 @@ def render_inicio():
             data['cirugias'] = db.execute_query(queries.get_cirugias_hoy())
             data['ocupacion'] = db.execute_query(queries.get_ocupacion_actual())
             data['profesionales'] = db.execute_query(queries.get_profesionales_hoy())
+            data['rda'] = db.execute_query(queries.get_rda_summary_hoy())
         except Exception as e:
             st.error(f"Error cargando datos: {e}")
             return None
@@ -115,7 +116,8 @@ def render_inicio():
                 COLORS['success'],
                 COLORS['info']
             )
-        
+            st.caption("*Fuente: DetaFact. Puede diferir del reporte nativo SIHOS (~$800M de brecha conocida).*")
+
         with col2:
             render_metric_card(
                 "📋",
@@ -323,6 +325,47 @@ def render_inicio():
     
     except Exception as e:
         st.error(f"Error cargando alertas: {e}")
-    
+
+    render_section_divider()
+
+    # =======================================================================
+    # INTEROPERABILIDAD RDA
+    # =======================================================================
+    render_section_banner("🔗", "Interoperabilidad RDA — Hoy")
+
+    if data.get('rda') is not None and not data['rda'].empty:
+        rda = data['rda'].iloc[0]
+        total = int(rda.get('Total') or 0) or 1
+
+        enviados   = int(rda.get('Enviados',   0) or 0)
+        pendientes = int(rda.get('Pendientes', 0) or 0)
+        rechazados = int(rda.get('Rechazados', 0) or 0)
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                label="🟢 Enviados",
+                value=f"{enviados:,}",
+                delta=f"{enviados / total * 100:.1f}%"
+            )
+        with col2:
+            st.metric(
+                label="🟡 Pendientes",
+                value=f"{pendientes:,}",
+                delta=f"{pendientes / total * 100:.1f}%"
+            )
+        with col3:
+            st.metric(
+                label="🔴 Rechazados",
+                value=f"{rechazados:,}",
+                delta=f"{rechazados / total * 100:.1f}%",
+                delta_color="inverse"
+            )
+
+        st.caption("Ver detalle completo en la pestaña **📊 Reportes → Interoperabilidad RDA**")
+    else:
+        st.info("Sin envíos RDA registrados hoy.")
+
     # Footer
     render_footer()

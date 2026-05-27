@@ -77,19 +77,23 @@ def render_facturacion():
             
             # Tendencias (agregación diaria para gráficas)
             query_tendencias = f"""
-            SELECT 
-                DATE(FechFact) as Fecha,
+            SELECT
+                DATE(ef.FechFact) as Fecha,
                 COUNT(*) as Total_Facturas,
-                SUM(ValoTota) as Valor_Total,
-                AVG(ValoTota) as Valor_Promedio,
-                MAX(ValoTota) as Valor_Maximo,
-                COUNT(CASE WHEN CodiDocu = 'FE' THEN 1 END) as Facturas_Electronicas,
-                COUNT(CASE WHEN CodiDocu = 'LIQ' THEN 1 END) as Liquidaciones,
-                COUNT(CASE WHEN Anulado = 1 THEN 1 END) as Facturas_Anuladas,
-                ROUND((COUNT(CASE WHEN Anulado = 1 THEN 1 END) / COUNT(*)) * 100, 1) as Tasa_Anulacion
-            FROM EncaFact
-            WHERE FechFact BETWEEN '{f_inicio}' AND '{f_fin}'
-            GROUP BY DATE(FechFact)
+                SUM(ef.ValoTota) as Valor_Total,
+                AVG(ef.ValoTota) as Valor_Promedio,
+                MAX(ef.ValoTota) as Valor_Maximo,
+                COUNT(fe.NumeDocu) as Facturas_Electronicas,
+                COUNT(CASE WHEN fe.NumeDocu IS NULL THEN 1 END) as Liquidaciones,
+                COUNT(CASE WHEN ef.Anulado = 1 THEN 1 END) as Facturas_Anuladas,
+                ROUND((COUNT(CASE WHEN ef.Anulado = 1 THEN 1 END) / COUNT(*)) * 100, 1) as Tasa_Anulacion
+            FROM EncaFact ef
+            LEFT JOIN FactElec fe ON fe.CodiInst = ef.CodiInst
+                AND fe.CodiAno = ef.CodiAno
+                AND fe.NumeDocu = ef.NumeFact
+                AND fe.CodiDocu = 'FE'
+            WHERE ef.FechFact BETWEEN '{f_inicio}' AND '{f_fin}'
+            GROUP BY DATE(ef.FechFact)
             ORDER BY Fecha
             """
             data['tendencias'] = db.execute_query(query_tendencias)
