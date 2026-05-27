@@ -57,42 +57,37 @@ def render_inicio():
     if not data['admisiones'].empty:
         adm = data['admisiones'].iloc[0]
         
-        col1, col2, col3, col4 = st.columns(4)
-        
+        col1, col2, col3, col4, col5 = st.columns(5)
+
         with col1:
             render_metric_card(
-                "📊",
-                "ADMISIONES",
+                "📊", "ADMISIONES",
                 f"{int(adm.get('Total_Admisiones', 0)):,}",
-                COLORS['primary'],
-                COLORS['secondary']
+                COLORS['primary'], COLORS['secondary']
             )
-        
         with col2:
             render_metric_card(
-                "✅",
-                "ACTIVAS AHORA",
-                f"{int(adm.get('Activas', 0)):,}",
-                COLORS['success'],
-                COLORS['info']
+                "🚨", "URGENCIAS",
+                f"{int(adm.get('Urgencias', 0)):,}",
+                COLORS['warning'], COLORS['danger']
             )
-        
         with col3:
             render_metric_card(
-                "🚨",
-                "URGENCIAS",
-                f"{int(adm.get('Urgencias', 0)):,}",
-                COLORS['warning'],
-                COLORS['danger']
+                "🛏️", "HOSPITALIZACIÓN",
+                f"{int(adm.get('Hospitalizacion', 0)):,}",
+                COLORS['info'], COLORS['primary']
             )
-        
         with col4:
             render_metric_card(
-                "🛏️",
-                "HOSPITALIZACIÓN",
-                f"{int(adm.get('Hospitalizacion', 0)):,}",
-                COLORS['info'],
-                COLORS['primary']
+                "👨‍⚕️", "CONSULTA EXTERNA",
+                f"{int(adm.get('Consulta_Externa', 0)):,}",
+                COLORS['success'], COLORS['secondary']
+            )
+        with col5:
+            render_metric_card(
+                "💚", "PyP",
+                f"{int(adm.get('PyP', 0)):,}",
+                COLORS['secondary'], COLORS['success']
             )
     
     render_section_divider()

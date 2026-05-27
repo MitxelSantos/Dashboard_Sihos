@@ -50,7 +50,9 @@ def render_profesionales():
             data['por_servicio'] = db.execute_query(queries.get_atenciones_por_servicio(), params)
             data['por_especialidad'] = db.execute_query(queries.get_atenciones_por_especialidad(), params)
             data['por_turno'] = db.execute_query(queries.get_atenciones_por_turno_profesional(), params)
-            
+            data['por_modulo'] = db.execute_query(queries.get_atenciones_por_modulo(), params)
+            data['heatmap_hora'] = db.execute_query(queries.get_heatmap_hora_profesional(), params)
+
             # Tendencias
             query_tendencias = f"""
             SELECT 
@@ -132,7 +134,49 @@ def render_profesionales():
             )
     
     render_section_divider()
-    
+
+    # =======================================================================
+    # SECCIÓN: DESGLOSE POR MÓDULO CLÍNICO
+    # =======================================================================
+    render_section_banner("🏥", "Atenciones por Módulo Clínico", rango_fechas)
+
+    if not data['por_modulo'].empty:
+        col_mod1, col_mod2 = st.columns([2, 1])
+
+        with col_mod1:
+            fig_mod = px.bar(
+                data['por_modulo'],
+                x='Total_Atenciones',
+                y='Modulo',
+                orientation='h',
+                color='PctCumplimiento',
+                color_continuous_scale='RdYlGn',
+                title='Atenciones por módulo clínico (color = % cumplimiento)',
+                text='Total_Atenciones'
+            )
+            fig_mod.update_traces(textposition='outside')
+            fig_mod.update_layout(
+                height=max(350, len(data['por_modulo']) * 40),
+                yaxis={'categoryorder': 'total ascending'},
+                showlegend=False,
+                coloraxis_colorbar=dict(title='% Cumplimiento')
+            )
+            st.plotly_chart(fig_mod, use_container_width=True)
+
+        with col_mod2:
+            st.markdown("#### Resumen por módulo")
+            for _, row in data['por_modulo'].iterrows():
+                pct = row.get('PctCumplimiento', 0) or 0
+                icono = "🟢" if pct >= 80 else "🟡" if pct >= 50 else "🔴"
+                st.markdown(
+                    f"{icono} **{row['Modulo']}**  \n"
+                    f"  {int(row['Total_Atenciones']):,} atenciones · "
+                    f"{int(row['Profesionales_Activos'])} profesionales · "
+                    f"{pct:.0f}% cumplimiento"
+                )
+
+    render_section_divider()
+
     # =======================================================================
     # DISTRIBUCIÓN
     # =======================================================================
@@ -520,5 +564,42 @@ def render_profesionales():
             )
     else:
         st.info("No hay datos de profesionales")
-    
+
+    render_section_divider()
+
+    # =======================================================================
+    # SECCIÓN: MAPA DE CALOR — CARGA POR HORA Y DÍA
+    # =======================================================================
+    render_section_banner("🌡️", "Mapa de Calor — Carga Horaria", rango_fechas)
+
+    if not data['heatmap_hora'].empty:
+        import numpy as np
+
+        df_heat = data['heatmap_hora'].copy()
+
+        orden_dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+        pivot = df_heat.pivot_table(
+            index='Hora', columns='NombreDia',
+            values='Total', aggfunc='sum', fill_value=0
+        )
+        dias_presentes = [d for d in orden_dias if d in pivot.columns]
+        pivot = pivot[dias_presentes]
+
+        fig_heat = px.imshow(
+            pivot,
+            labels=dict(x="Día", y="Hora del día", color="Atenciones"),
+            title="Intensidad de atenciones por hora y día de la semana",
+            color_continuous_scale='Blues',
+            aspect='auto'
+        )
+        fig_heat.update_layout(height=500)
+        st.plotly_chart(fig_heat, use_container_width=True)
+
+        st.caption(
+            "Las celdas más oscuras indican mayor concentración de atenciones. "
+            "Útil para planificación de turnos y recursos."
+        )
+    else:
+        st.info("No hay datos de horario de atenciones para el período seleccionado.")
+
     render_footer()

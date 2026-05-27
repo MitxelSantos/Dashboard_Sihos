@@ -692,30 +692,74 @@ class SIHOSQueries:
         """
     
     def get_tiempos_espera_procedimientos(self):
-        """Tiempo promedio entre orden y realización - SIMPLIFICADO"""
+        """Tiempo promedio entre fecha de la orden (EncaOrde) y realización (HojaProc).
+        Usa ConsAdmi + CodiModu como enlace cuando NumeOrde no está disponible."""
         return """
-        SELECT 
-            COALESCE(cs.NombServ, hp_filtrada.CodiServ) as Servicio,
-            COUNT(*) as Total_Procedimientos,
-            ROUND(AVG(DATEDIFF(hp_filtrada.FechProc, eo.Fecha)), 1) as Promedio_Dias_Espera
-        FROM (
-            -- Primero filtramos solo los procedimientos realizados en el rango
-            SELECT ConsAdmi, NumeOrde, FechProc, CodiServ
-            FROM HojaProc
-            WHERE FechProc BETWEEN :fecha_inicio AND :fecha_fin
-            AND ProcReal = 1
-            AND NumeOrde IS NOT NULL
-        ) AS hp_filtrada
-        -- Luego unimos con las órdenes usando los índices principales
-        INNER JOIN EncaOrde eo ON hp_filtrada.ConsAdmi = eo.ConsAdmi 
-            AND hp_filtrada.NumeOrde = eo.ConsOrde
-        LEFT JOIN CodiServ cs ON hp_filtrada.CodiServ = cs.CodiServ
-        GROUP BY hp_filtrada.CodiServ, cs.NombServ
-        HAVING Total_Procedimientos > 5
-        ORDER BY Promedio_Dias_Espera DESC
-        LIMIT 50
-        """
-    
+    SELECT
+        COALESCE(cs.NombServ, hp.CodiServ, 'Sin Definir') AS Servicio,
+        COUNT(*)                                            AS Total_Procedimientos,
+        ROUND(AVG(
+            DATEDIFF(hp.FechProc, eo.Fecha)
+        ), 1)                                               AS Promedio_Dias_Espera,
+        MIN(DATEDIFF(hp.FechProc, eo.Fecha))               AS MinDias,
+        MAX(DATEDIFF(hp.FechProc, eo.Fecha))               AS MaxDias
+    FROM HojaProc hp
+    JOIN (
+        SELECT ConsAdmi, MIN(Fecha) AS Fecha, CodiModu
+        FROM EncaOrde
+        GROUP BY ConsAdmi, CodiModu
+    ) eo ON eo.ConsAdmi = hp.ConsAdmi
+    LEFT JOIN CodiServ cs ON cs.CodiServ = hp.CodiServ
+    WHERE hp.FechProc BETWEEN :fecha_inicio AND :fecha_fin
+      AND hp.ProcReal = 1
+      AND DATEDIFF(hp.FechProc, eo.Fecha) >= 0
+      AND DATEDIFF(hp.FechProc, eo.Fecha) <= 30
+    GROUP BY hp.CodiServ, cs.NombServ
+    HAVING Total_Procedimientos > 5
+    ORDER BY Promedio_Dias_Espera DESC
+    LIMIT 20
+    """
+
+    def get_admisiones_abiertas(self):
+        """Admisiones con cama asignada que siguen abiertas (sin fecha de egreso).
+        Filtradas por fecha de ingreso y servicio actual."""
+        return """
+    SELECT
+        a.ConsAdmi,
+        CASE a.TipoAten
+            WHEN 1 THEN 'Consulta Externa'
+            WHEN 2 THEN 'Hospitalización'
+            WHEN 3 THEN 'Urgencias'
+            WHEN 4 THEN 'PyP'
+            ELSE CONCAT('Tipo ', a.TipoAten)
+        END                                         AS TipoAtencion,
+        COALESCE(cs_ing.NombServ, a.CodiServ)       AS ServicioIngreso,
+        COALESCE(cs_act.NombServ, a.ServEgre)       AS ServicioActual,
+        c.CodiCama,
+        c.NombCama,
+        a.DiagIngr                                  AS Diagnostico,
+        COALESCE(p.NombUsua, a.NumeUsua)            AS Paciente,
+        a.FechIngr                                  AS FechaIngreso,
+        a.HoraIngr                                  AS HoraIngreso,
+        COALESCE(u1.Nombre, a.UsuaDigi)             AS QuienAbrio,
+        COALESCE(u2.Nombre, a.UsuaModi)             AS ResponsableCierre,
+        a.FechModi                                  AS UltimaModificacion,
+        DATEDIFF(CURDATE(), a.FechIngr)             AS DiasAbierta
+    FROM Admision a
+    JOIN CodiCama c
+        ON  c.ConsAdmi = a.ConsAdmi
+        AND c.Activa   = 1
+    LEFT JOIN CodiServ cs_ing ON cs_ing.CodiServ = a.CodiServ
+    LEFT JOIN CodiServ cs_act ON cs_act.CodiServ = a.ServEgre
+    LEFT JOIN Paciente p      ON p.NumeUsua = a.NumeUsua
+    LEFT JOIN Usuarios u1     ON u1.Login   = a.UsuaDigi
+    LEFT JOIN Usuarios u2     ON u2.Login   = a.UsuaModi
+    WHERE a.Cerrado  = 2
+      AND a.Anulado  = 2
+      AND (a.FechEgre IS NULL OR a.FechEgre = '0000-00-00')
+    ORDER BY a.FechIngr ASC
+    """
+
     # ========================================================================
     # CIRUGÍAS
     # ========================================================================
@@ -1323,7 +1367,7 @@ class SIHOSQueries:
             COUNT(*) AS Total
         FROM EnviRda
         WHERE deleted_at IS NULL
-          AND created_at BETWEEN :fecha_inicio AND :fecha_fin
+          AND DATE(created_at) BETWEEN :fecha_inicio AND :fecha_fin
         """
 
     def get_rda_tabla(self, estado_id=None, busqueda=None):
@@ -1354,7 +1398,7 @@ class SIHOSQueries:
         LEFT JOIN Admision a ON a.ConsAdmi = e.ConsAdmi
         LEFT JOIN Paciente p ON p.NumeUsua = a.NumeUsua
         WHERE e.deleted_at IS NULL
-          AND e.created_at BETWEEN :fecha_inicio AND :fecha_fin
+          AND DATE(e.created_at) BETWEEN :fecha_inicio AND :fecha_fin
           {filtro_estado}
           {filtro_busqueda}
         GROUP BY e.ConsAdmi, p.NombUsua
@@ -1362,39 +1406,197 @@ class SIHOSQueries:
         LIMIT 500
         """
 
-    def get_rda_detalle(self):
-        """Detalle de envíos RDA por admisión, con número VIDA y mensaje de error del Ministerio"""
+    # ========================================================================
+    # RESOLUCIÓN 373 — TIEMPOS DE ESPERA URGENCIAS
+    # ========================================================================
+
+    def get_373_kpis(self):
+        """KPIs generales de tiempos de espera urgencias para Resolución 373"""
         return """
-        SELECT
-            e.id                AS EnviRda_id,
-            e.ConsAdmi,
-            CASE e.tipo_rda_id
-                WHEN 60 THEN 'RDA Paciente'
-                WHEN 61 THEN 'RDA Consulta Externa'
-                ELSE CONCAT('Tipo ', e.tipo_rda_id)
-            END                 AS TipoRDA,
-            CASE e.estado_id
-                WHEN 56 THEN '🟢 Enviado'
-                WHEN 57 THEN '🟡 Pendiente'
-                WHEN 58 THEN '🔴 Rechazado'
-            END                 AS Estado,
-            e.usuario           AS UsuarioSIHOS,
-            e.created_at        AS FechaEnvio,
-            JSON_UNQUOTE(JSON_EXTRACT(
-                a.json_respuesta,
-                '$.respuesta.entry[0].resource.id'
-            ))                  AS NumeroVIDA,
-            JSON_UNQUOTE(JSON_EXTRACT(
-                a.json_respuesta, '$.http_code'
-            ))                  AS HttpCode,
-            JSON_UNQUOTE(JSON_EXTRACT(
-                a.json_respuesta,
-                '$.respuesta.issue[0].details.coding[0].display'
-            ))                  AS MensajeError,
-            a.created_at        AS FechaRespuesta
-        FROM EnviRda e
-        LEFT JOIN AudiRda a ON a.EnviRda_id = e.id
-        WHERE e.ConsAdmi = :consadmi
-          AND e.deleted_at IS NULL
-        ORDER BY e.tipo_rda_id, a.created_at DESC
-        """
+    SELECT
+        COUNT(*)                                                    AS TotalUrgencias,
+        ROUND(AVG(TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria)),1) AS PromEsperaMin,
+        MIN(TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria))         AS MinEsperaMin,
+        MAX(TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria))         AS MaxEsperaMin,
+        SUM(CASE WHEN TIMESTAMPDIFF(MINUTE,a.HoraIngr,t.HoraTria) <= 30  THEN 1 ELSE 0 END) AS DentroStd,
+        SUM(CASE WHEN TIMESTAMPDIFF(MINUTE,a.HoraIngr,t.HoraTria) > 30   THEN 1 ELSE 0 END) AS FueraStd
+    FROM Triage t
+    JOIN Admision a ON a.ConsAdmi = t.ConsAdmi
+    WHERE a.FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+      AND a.TipoAten = 3
+      AND a.Anulado  = 2
+      AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) >= 0
+    """
+
+    def get_373_por_triage(self):
+        """Tiempo de espera por clasificación de triage con semáforo vs estándar"""
+        return """
+    SELECT
+        t.ClasTria,
+        CASE t.ClasTria
+            WHEN 1 THEN '1 - Reanimación'
+            WHEN 2 THEN '2 - Emergencia'
+            WHEN 3 THEN '3 - Urgencia'
+            WHEN 4 THEN '4 - Menos urgente'
+            WHEN 5 THEN '5 - No urgente'
+        END                                                             AS NivelTriage,
+        COUNT(*)                                                        AS Total,
+        ROUND(AVG(TIMESTAMPDIFF(MINUTE,a.HoraIngr,t.HoraTria)),1)      AS PromEsperaMin,
+        MAX(TIMESTAMPDIFF(MINUTE,a.HoraIngr,t.HoraTria))               AS MaxEsperaMin,
+        CASE t.ClasTria
+            WHEN 1 THEN 0
+            WHEN 2 THEN 30
+            WHEN 3 THEN 60
+            WHEN 4 THEN 120
+            WHEN 5 THEN 240
+        END                                                             AS LimiteStdMin
+    FROM Triage t
+    JOIN Admision a ON a.ConsAdmi = t.ConsAdmi
+    WHERE a.FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+      AND a.TipoAten = 3
+      AND a.Anulado  = 2
+      AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) >= 0
+    GROUP BY t.ClasTria
+    ORDER BY t.ClasTria
+    """
+
+    def get_373_por_causa(self):
+        """Tiempo de espera por causa externa"""
+        return """
+    SELECT
+        COALESCE(ce.NombMoti, CONCAT('Causa ', a.CausExte)) AS CausaExterna,
+        COUNT(*)                                             AS Total,
+        ROUND(AVG(TIMESTAMPDIFF(MINUTE,a.HoraIngr,t.HoraTria)),1) AS PromEsperaMin
+    FROM Triage t
+    JOIN Admision a  ON a.ConsAdmi  = t.ConsAdmi
+    LEFT JOIN CausExte ce ON ce.CodiMoti = a.CausExte
+    WHERE a.FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+      AND a.TipoAten = 3
+      AND a.Anulado  = 2
+      AND a.CausExte IS NOT NULL
+      AND a.CausExte != ''
+      AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) >= 0
+    GROUP BY a.CausExte, ce.NombMoti
+    ORDER BY Total DESC
+    LIMIT 10
+    """
+
+    def get_373_por_servicio(self):
+        """Tiempo de espera por servicio de urgencias"""
+        return """
+    SELECT
+        COALESCE(cs.NombServ, a.CodiServ)                   AS Servicio,
+        COUNT(*)                                             AS Total,
+        ROUND(AVG(TIMESTAMPDIFF(MINUTE,a.HoraIngr,t.HoraTria)),1) AS PromEsperaMin,
+        MAX(TIMESTAMPDIFF(MINUTE,a.HoraIngr,t.HoraTria))    AS MaxEsperaMin
+    FROM Triage t
+    JOIN Admision a  ON a.ConsAdmi  = t.ConsAdmi
+    LEFT JOIN CodiServ cs ON cs.CodiServ = a.CodiServ
+    WHERE a.FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+      AND a.TipoAten = 3
+      AND a.Anulado  = 2
+      AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) >= 0
+    GROUP BY a.CodiServ, cs.NombServ
+    ORDER BY PromEsperaMin DESC
+    """
+
+    def get_373_tendencia_diaria(self):
+        """Tendencia diaria de tiempo de espera urgencias"""
+        return """
+    SELECT
+        a.FechIngr                                               AS Fecha,
+        COUNT(*)                                                 AS TotalUrgencias,
+        ROUND(AVG(TIMESTAMPDIFF(MINUTE,a.HoraIngr,t.HoraTria)),1) AS PromEsperaMin
+    FROM Triage t
+    JOIN Admision a ON a.ConsAdmi = t.ConsAdmi
+    WHERE a.FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+      AND a.TipoAten = 3
+      AND a.Anulado  = 2
+      AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) >= 0
+    GROUP BY a.FechIngr
+    ORDER BY Fecha
+    """
+
+    def get_atenciones_por_modulo(self):
+        """Distribución de atenciones por módulo clínico (más granular que TipoAten)"""
+        return """
+    SELECT
+        CASE CodiModu
+            WHEN 5  THEN 'Consulta Externa'
+            WHEN 6  THEN 'Urgencias'
+            WHEN 8  THEN 'Hospitalización/UCI'
+            WHEN 9  THEN 'Odontología'
+            WHEN 10 THEN 'Laboratorio'
+            WHEN 15 THEN 'PyP'
+            WHEN 27 THEN 'Cirugía'
+            WHEN 28 THEN 'Procedimientos'
+            WHEN 38 THEN 'Terapias'
+            ELSE CONCAT('Módulo ', CodiModu)
+        END                         AS Modulo,
+        COUNT(*)                    AS Total_Atenciones,
+        COUNT(DISTINCT UsuaCons)    AS Profesionales_Activos,
+        COUNT(CASE WHEN EstaReal = 1 THEN 1 END) AS Realizadas,
+        ROUND(
+            COUNT(CASE WHEN EstaReal = 1 THEN 1 END) * 100.0
+            / NULLIF(COUNT(*), 0), 1
+        )                           AS PctCumplimiento
+    FROM RipsCons
+    WHERE FechCons BETWEEN :fecha_inicio AND :fecha_fin
+      AND UsuaCons IS NOT NULL
+      AND UsuaCons != ''
+    GROUP BY CodiModu
+    ORDER BY Total_Atenciones DESC
+    """
+
+    def get_heatmap_hora_profesional(self):
+        """Distribución de atenciones por hora del día y día de la semana"""
+        return """
+    SELECT
+        HOUR(HoraCons)      AS Hora,
+        DAYOFWEEK(FechCons) AS DiaSemana,
+        CASE DAYOFWEEK(FechCons)
+            WHEN 1 THEN 'Dom'
+            WHEN 2 THEN 'Lun'
+            WHEN 3 THEN 'Mar'
+            WHEN 4 THEN 'Mié'
+            WHEN 5 THEN 'Jue'
+            WHEN 6 THEN 'Vie'
+            WHEN 7 THEN 'Sáb'
+        END                 AS NombreDia,
+        COUNT(*)            AS Total
+    FROM RipsCons
+    WHERE FechCons BETWEEN :fecha_inicio AND :fecha_fin
+      AND HoraCons IS NOT NULL
+      AND HoraCons != '00:00:00'
+      AND UsuaCons IS NOT NULL
+      AND UsuaCons != ''
+    GROUP BY HOUR(HoraCons), DAYOFWEEK(FechCons)
+    ORDER BY DiaSemana, Hora
+    """
+
+    def get_rda_detalle(self):
+        """Detalle de envíos RDA por admisión. JSON parseado en Python (sin permisos JSON_UNQUOTE)."""
+        return """
+    SELECT
+        e.id                AS EnviRda_id,
+        e.ConsAdmi,
+        CASE e.tipo_rda_id
+            WHEN 60 THEN 'RDA Paciente'
+            WHEN 61 THEN 'RDA Consulta Externa'
+            ELSE CONCAT('Tipo ', e.tipo_rda_id)
+        END                 AS TipoRDA,
+        CASE e.estado_id
+            WHEN 56 THEN '🟢 Enviado'
+            WHEN 57 THEN '🟡 Pendiente'
+            WHEN 58 THEN '🔴 Rechazado'
+        END                 AS Estado,
+        e.usuario           AS UsuarioSIHOS,
+        e.created_at        AS FechaEnvio,
+        a.json_respuesta    AS JsonRespuesta,
+        a.created_at        AS FechaRespuesta
+    FROM EnviRda e
+    LEFT JOIN AudiRda a ON a.EnviRda_id = e.id
+    WHERE e.ConsAdmi = :consadmi
+      AND e.deleted_at IS NULL
+    ORDER BY e.tipo_rda_id, a.created_at DESC
+    """

@@ -150,6 +150,40 @@ def render_ocupacion():
             for idx, row in top_3.iterrows():
                 st.metric(label=str(row[campo_nombre])[:25], value=f"{row[campo_valor]:.1f}{'%' if 'Porcentaje' in campo_valor else ''}")
         
+        # Gráfica comparativa Total vs Ocupadas por servicio
+        if opcion_dist == "Por Servicio" and not datos_dist.empty:
+            st.markdown("#### 🛏️ Camas totales vs ocupadas por servicio")
+            df_serv_comp = data['por_servicio'].copy()
+            df_serv_comp = df_serv_comp[df_serv_comp['Total_Camas'] > 0].sort_values(
+                'Ocupadas', ascending=True
+            )
+            fig_comp = go.Figure()
+            fig_comp.add_trace(go.Bar(
+                name='Libres',
+                y=df_serv_comp['Servicio'],
+                x=df_serv_comp['Total_Camas'] - df_serv_comp['Ocupadas'],
+                orientation='h',
+                marker_color=COLORS['success'],
+                opacity=0.7
+            ))
+            fig_comp.add_trace(go.Bar(
+                name='Ocupadas',
+                y=df_serv_comp['Servicio'],
+                x=df_serv_comp['Ocupadas'],
+                orientation='h',
+                marker_color=COLORS['danger'],
+                text=df_serv_comp['Porcentaje_Ocupacion'].apply(lambda x: f"{x:.0f}%"),
+                textposition='inside'
+            ))
+            fig_comp.update_layout(
+                barmode='stack',
+                height=max(350, len(df_serv_comp) * 35),
+                xaxis_title='Número de camas',
+                legend=dict(orientation='h', y=1.05),
+                hovermode='y unified'
+            )
+            st.plotly_chart(fig_comp, use_container_width=True)
+
         with st.expander("📋 Ver tabla detallada"):
             st.dataframe(datos_dist, use_container_width=True, hide_index=True)
     else:

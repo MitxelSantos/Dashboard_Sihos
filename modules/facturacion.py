@@ -77,25 +77,40 @@ def render_facturacion():
             
             # Tendencias (agregación diaria para gráficas)
             query_tendencias = f"""
-            SELECT
-                DATE(ef.FechFact) as Fecha,
-                COUNT(*) as Total_Facturas,
-                SUM(ef.ValoTota) as Valor_Total,
-                AVG(ef.ValoTota) as Valor_Promedio,
-                MAX(ef.ValoTota) as Valor_Maximo,
-                COUNT(fe.NumeDocu) as Facturas_Electronicas,
-                COUNT(CASE WHEN fe.NumeDocu IS NULL THEN 1 END) as Liquidaciones,
-                COUNT(CASE WHEN ef.Anulado = 1 THEN 1 END) as Facturas_Anuladas,
-                ROUND((COUNT(CASE WHEN ef.Anulado = 1 THEN 1 END) / COUNT(*)) * 100, 1) as Tasa_Anulacion
-            FROM EncaFact ef
-            LEFT JOIN FactElec fe ON fe.CodiInst = ef.CodiInst
-                AND fe.CodiAno = ef.CodiAno
-                AND fe.NumeDocu = ef.NumeFact
-                AND fe.CodiDocu = 'FE'
-            WHERE ef.FechFact BETWEEN '{f_inicio}' AND '{f_fin}'
-            GROUP BY DATE(ef.FechFact)
-            ORDER BY Fecha
-            """
+SELECT
+    DATE(ef.FechFact)                                             AS Fecha,
+    COUNT(DISTINCT CONCAT(ef.CodiInst, ef.CodiAno,
+          ef.CodiDocu, ef.NumeFact))                              AS Total_Facturas,
+    COALESCE(SUM(df.ValoTota), 0)                                AS Valor_Total,
+    ROUND(
+        COALESCE(SUM(df.ValoTota), 0)
+        / NULLIF(COUNT(DISTINCT CONCAT(ef.CodiInst, ef.CodiAno,
+          ef.CodiDocu, ef.NumeFact)), 0)
+    , 0)                                                          AS Valor_Promedio,
+    MAX(df.ValoTota)                                             AS Valor_Maximo,
+    COUNT(DISTINCT fe.NumeDocu)                                  AS Facturas_Electronicas,
+    COUNT(DISTINCT CASE WHEN fe.NumeDocu IS NULL
+          THEN CONCAT(ef.CodiInst, ef.NumeFact) END)             AS Liquidaciones,
+    COUNT(CASE WHEN ef.Anulado = 1 THEN 1 END)                   AS Facturas_Anuladas,
+    ROUND(
+        COUNT(CASE WHEN ef.Anulado = 1 THEN 1 END)
+        / NULLIF(COUNT(*), 0) * 100
+    , 1)                                                          AS Tasa_Anulacion
+FROM EncaFact ef
+JOIN DetaFact df
+    ON  df.CodiInst = ef.CodiInst
+    AND df.CodiAno  = ef.CodiAno
+    AND df.CodiDocu = ef.CodiDocu
+    AND df.NumeFact = ef.NumeFact
+LEFT JOIN FactElec fe
+    ON  fe.CodiInst = ef.CodiInst
+    AND fe.CodiAno  = ef.CodiAno
+    AND fe.NumeDocu = ef.NumeFact
+    AND fe.CodiDocu = 'FE'
+WHERE ef.FechFact BETWEEN '{f_inicio}' AND '{f_fin}'
+GROUP BY DATE(ef.FechFact)
+ORDER BY Fecha
+"""
             data['tendencias'] = db.execute_query(query_tendencias)
             
             # Secciones adicionales
