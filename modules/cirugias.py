@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from utils.db_connector import get_db_connector
-from utils.queries import SIHOSQueries
+from utils.queries import SIHOSQueries, dataframe_to_excel
 from config.settings import COLORS, CACHE_TTL
 from components.widgets import (
     get_fecha_rango_texto,
@@ -87,20 +87,29 @@ def render_cirugias():
     if not data['estadisticas'].empty:
         stats = data['estadisticas'].iloc[0]
         
-        col1, col2, col3, col4 = st.columns(4)
-        
+        col1, col2, col3, col4, col5 = st.columns(5)
+
         with col1:
-            render_metric_card("⚕️", "TOTAL CIRUGÍAS", f"{int(stats.get('Total_Cirugias', 0)):,}", COLORS['danger'], COLORS['warning'])
-        
+            render_metric_card("⚕️", "TOTAL CIRUGÍAS",
+                f"{int(stats.get('Total_Cirugias', 0)):,}",
+                COLORS['danger'], COLORS['warning'])
         with col2:
             duracion = stats.get('Duracion_Promedio', 0) or 0
-            render_metric_card("⏱️", "DURACIÓN PROMEDIO", f"{int(duracion)} min", COLORS['warning'], COLORS['info'])
-        
+            render_metric_card("⏱️", "DURACIÓN PROM.",
+                f"{int(duracion)} min",
+                COLORS['warning'], COLORS['info'])
         with col3:
-            render_metric_card("📊", "ANESTESIA GENERAL", f"{int(stats.get('Anestesia_General', 0)):,}", COLORS['primary'], COLORS['secondary'])
-        
+            render_metric_card("💉", "ANEST. GENERAL",
+                f"{int(stats.get('Anestesia_General', 0)):,}",
+                COLORS['primary'], COLORS['secondary'])
         with col4:
-            render_metric_card("💉", "ANESTESIA REGIONAL", f"{int(stats.get('Anestesia_Regional', 0)):,}", COLORS['info'], COLORS['success'])
+            render_metric_card("🩺", "ANEST. REGIONAL",
+                f"{int(stats.get('Anestesia_Regional', 0)):,}",
+                COLORS['info'], COLORS['success'])
+        with col5:
+            render_metric_card("🔬", "ANEST. LOCAL",
+                f"{int(stats.get('Anestesia_Local', 0)):,}",
+                COLORS['success'], COLORS['secondary'])
     
     render_section_divider()
     
@@ -178,7 +187,18 @@ def render_cirugias():
         with st.expander("📋 Ver tabla detallada"):
             st.dataframe(datos_dist, use_container_width=True, hide_index=True)
             csv = datos_dist.to_csv(index=False, encoding='utf-8-sig')
-            st.download_button(label="📥 Descargar CSV", data=csv, file_name=f"cirugias_{opcion_dist.lower().replace(' ', '_')}_{fecha_inicio}_{fecha_fin}.csv", mime="text/csv")
+            st.download_button(
+                label="📥 Descargar CSV",
+                data=csv,
+                file_name=f"cirugias_{opcion_dist.lower().replace(' ', '_')}_{fecha_inicio}_{fecha_fin}.csv",
+                mime="text/csv"
+            )
+            st.download_button(
+                label="📥 Descargar Excel",
+                data=dataframe_to_excel(datos_dist),
+                file_name=f"cirugias_{opcion_dist.lower().replace(' ', '_')}_{fecha_inicio}_{fecha_fin}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
     else:
         st.info(f"No hay datos para {opcion_dist}")
     

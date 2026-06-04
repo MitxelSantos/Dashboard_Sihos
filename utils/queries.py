@@ -262,28 +262,84 @@ class SIHOSQueries:
         """
     
     def get_tiempos_estancia(self):
-        """Distribución de tiempos de estancia para hospitalización"""
+        """Distribución de tiempos de estancia — filtrada por FechEgre en el rango."""
         return """
-        SELECT 
-            CASE 
-                WHEN DATEDIFF(FechEgre, FechIngr) <= 1 THEN '1 día o menos'
-                WHEN DATEDIFF(FechEgre, FechIngr) = 2 THEN '2 días'
-                WHEN DATEDIFF(FechEgre, FechIngr) >= 3 THEN '3 días o más'
-            END as Rango,
-            COUNT(*) as Total
+        SELECT
+            CASE
+                WHEN DATEDIFF(FechEgre, FechIngr) = 0     THEN 'Menos de 1 día'
+                WHEN DATEDIFF(FechEgre, FechIngr) BETWEEN 1 AND 3   THEN '1 - 3 días'
+                WHEN DATEDIFF(FechEgre, FechIngr) BETWEEN 4 AND 7   THEN '4 - 7 días'
+                WHEN DATEDIFF(FechEgre, FechIngr) BETWEEN 8 AND 14  THEN '8 - 14 días'
+                WHEN DATEDIFF(FechEgre, FechIngr) > 14              THEN 'Más de 14 días'
+            END AS Rango,
+            COUNT(*) AS Total
         FROM Admision
         WHERE TipoAten = 2
-            AND FechEgre IS NOT NULL 
-            AND FechEgre != '0000-00-00'
-            AND FechIngr >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-            AND Anulado = 2
+          AND Anulado  = 2
+          AND FechEgre IS NOT NULL
+          AND FechEgre != '0000-00-00'
+          AND FechEgre BETWEEN :fecha_inicio AND :fecha_fin
         GROUP BY Rango
-        ORDER BY 
+        ORDER BY
             CASE Rango
-                WHEN '1 día o menos' THEN 1
-                WHEN '2 días' THEN 2
-                WHEN '3 días o más' THEN 3
+                WHEN 'Menos de 1 día'  THEN 1
+                WHEN '1 - 3 días'      THEN 2
+                WHEN '4 - 7 días'      THEN 3
+                WHEN '8 - 14 días'     THEN 4
+                WHEN 'Más de 14 días'  THEN 5
             END
+        """
+
+    def get_estancia_por_servicio(self):
+        """Estancia promedio por servicio — filtrada por FechEgre.
+        PromDias excluye casos > 60 días para evitar distorsión por pacientes crónicos."""
+        return """
+        SELECT
+            COALESCE(cs.NombServ, a.CodiServ)   AS Servicio,
+            COUNT(*)                             AS TotalEgresos,
+            ROUND(AVG(CASE
+                WHEN DATEDIFF(a.FechEgre,a.FechIngr) <= 60
+                THEN DATEDIFF(a.FechEgre,a.FechIngr) END), 1) AS PromDias,
+            MIN(DATEDIFF(a.FechEgre, a.FechIngr))  AS MinDias,
+            MAX(DATEDIFF(a.FechEgre, a.FechIngr))  AS MaxDias,
+            SUM(CASE WHEN DATEDIFF(a.FechEgre,a.FechIngr) = 0             THEN 1 ELSE 0 END) AS Menos1Dia,
+            SUM(CASE WHEN DATEDIFF(a.FechEgre,a.FechIngr) BETWEEN 1 AND 3 THEN 1 ELSE 0 END) AS Entre1y3,
+            SUM(CASE WHEN DATEDIFF(a.FechEgre,a.FechIngr) BETWEEN 4 AND 7 THEN 1 ELSE 0 END) AS Entre4y7,
+            SUM(CASE WHEN DATEDIFF(a.FechEgre,a.FechIngr) BETWEEN 8 AND 14 THEN 1 ELSE 0 END) AS Entre8y14,
+            SUM(CASE WHEN DATEDIFF(a.FechEgre,a.FechIngr) > 30            THEN 1 ELSE 0 END) AS CasosProlong
+        FROM Admision a
+        LEFT JOIN CodiServ cs ON cs.CodiServ = a.CodiServ
+        WHERE a.TipoAten = 2
+          AND a.Anulado  = 2
+          AND a.FechEgre IS NOT NULL
+          AND a.FechEgre != '0000-00-00'
+          AND a.FechEgre BETWEEN :fecha_inicio AND :fecha_fin
+        GROUP BY a.CodiServ, cs.NombServ
+        HAVING TotalEgresos > 0
+        ORDER BY PromDias DESC
+        """
+
+    def get_estancias_prolongadas(self):
+        """Pacientes con estancia > 30 días — para alerta de gestión clínica."""
+        return """
+        SELECT
+            a.ConsAdmi,
+            COALESCE(p.NombUsua, a.NumeUsua)        AS Paciente,
+            a.FechIngr,
+            a.FechEgre,
+            DATEDIFF(a.FechEgre, a.FechIngr)        AS DiasEstancia,
+            COALESCE(cs.NombServ, a.CodiServ)        AS Servicio,
+            a.DiagIngr                               AS Diagnostico
+        FROM Admision a
+        LEFT JOIN CodiServ cs ON cs.CodiServ = a.CodiServ
+        LEFT JOIN Paciente p  ON p.NumeUsua  = a.NumeUsua
+        WHERE a.TipoAten = 2
+          AND a.Anulado  = 2
+          AND a.FechEgre IS NOT NULL
+          AND a.FechEgre != '0000-00-00'
+          AND a.FechEgre BETWEEN :fecha_inicio AND :fecha_fin
+          AND DATEDIFF(a.FechEgre, a.FechIngr) > 30
+        ORDER BY DiasEstancia DESC
         """
     
     def get_readmisiones_30_dias(self):
@@ -588,7 +644,7 @@ class SIHOSQueries:
             COUNT(*) as Total_Procedimientos,
             COUNT(DISTINCT CodiServ) as Servicios_Activos,
             COUNT(DISTINCT ConsAdmi) as Pacientes_Atendidos,
-            ROUND(COUNT(*) / NULLIF(DATEDIFF(:fecha_fin, :fecha_inicio), 0), 1) as Promedio_Por_Dia
+            ROUND(COUNT(*) / (DATEDIFF(:fecha_fin, :fecha_inicio) + 1), 1) as Promedio_Por_Dia
         FROM HojaProc
         WHERE FechProc BETWEEN :fecha_inicio AND :fecha_fin
         """
@@ -789,11 +845,12 @@ class SIHOSQueries:
                 CONCAT(FechFina, ' ', HoraFina)
             )), 0) as Duracion_Promedio,
             COUNT(CASE WHEN TipoAnes = 1 THEN 1 END) as Anestesia_General,
-            COUNT(CASE WHEN TipoAnes = 2 THEN 1 END) as Anestesia_Regional
+            COUNT(CASE WHEN TipoAnes = 2 THEN 1 END) as Anestesia_Regional,
+            COUNT(CASE WHEN TipoAnes = 3 THEN 1 END) as Anestesia_Local
         FROM ActoQuir
         WHERE FechInic BETWEEN :fecha_inicio AND :fecha_fin
         """
-    
+
     def get_distribucion_anestesia(self):
         """Distribución por tipo de anestesia"""
         return """
@@ -986,14 +1043,23 @@ class SIHOSQueries:
     # ========================================================================
     
     def get_ocupacion_actual(self):
-        """Ocupación actual de camas"""
+        """Ocupación actual de camas — solo admisiones activas legítimas (≤60 días sin egreso)."""
         return """
         SELECT
             COUNT(c.CodiCama) AS Total_Camas,
-            COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) AS Ocupadas,
-            COUNT(c.CodiCama) - COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) AS Libres,
+            COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2
+                            AND a.FechEgre IS NULL
+                            AND DATEDIFF(CURDATE(), a.FechIngr) <= 60
+                       THEN 1 END) AS Ocupadas,
+            COUNT(c.CodiCama) - COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2
+                                                AND a.FechEgre IS NULL
+                                                AND DATEDIFF(CURDATE(), a.FechIngr) <= 60
+                                           THEN 1 END) AS Libres,
             ROUND(
-                COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) * 100.0
+                COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2
+                                AND a.FechEgre IS NULL
+                                AND DATEDIFF(CURDATE(), a.FechIngr) <= 60
+                           THEN 1 END) * 100.0
                 / NULLIF(COUNT(c.CodiCama), 0), 1
             ) AS Porcentaje_Ocupacion
         FROM CodiCama c
@@ -1006,14 +1072,20 @@ class SIHOSQueries:
         return self.get_ocupacion_actual()
     
     def get_ocupacion_por_servicio(self):
-        """Ocupación por servicio"""
+        """Ocupación por servicio — solo admisiones activas legítimas (≤60 días sin egreso)."""
         return """
         SELECT
             COALESCE(cs.NombServ, c.CodiServ, 'Sin Servicio') AS Servicio,
             COUNT(c.CodiCama) AS Total_Camas,
-            COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) AS Ocupadas,
+            COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2
+                            AND a.FechEgre IS NULL
+                            AND DATEDIFF(CURDATE(), a.FechIngr) <= 60
+                       THEN 1 END) AS Ocupadas,
             ROUND(
-                COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL THEN 1 END) * 100.0
+                COUNT(CASE WHEN a.Cerrado = 2 AND a.Anulado = 2
+                                AND a.FechEgre IS NULL
+                                AND DATEDIFF(CURDATE(), a.FechIngr) <= 60
+                           THEN 1 END) * 100.0
                 / NULLIF(COUNT(c.CodiCama), 0), 1
             ) AS Porcentaje_Ocupacion
         FROM CodiCama c
@@ -1407,6 +1479,141 @@ class SIHOSQueries:
         """
 
     # ========================================================================
+    # LABORATORIO CLÍNICO
+    # ========================================================================
+
+    def get_lab_kpis(self):
+        """KPIs generales de laboratorio"""
+        return """
+    SELECT
+        COUNT(*)                            AS TotalResultados,
+        COUNT(DISTINCT dp.ConsAdmi)         AS TotalPacientes,
+        COUNT(DISTINCT dp.CodiProc)         AS TiposExamen,
+        ROUND(COUNT(*) * 1.0
+            / NULLIF(COUNT(DISTINCT dp.ConsAdmi), 0), 1) AS PromExamenesPaciente
+    FROM DetaPrue dp
+    WHERE dp.FechDigi BETWEEN :fecha_inicio AND :fecha_fin
+    """
+
+    def get_lab_por_grupo(self):
+        """Distribución por grupo de laboratorio según prefijo CUPS"""
+        return """
+    SELECT
+        CASE
+            WHEN LEFT(dp.CodiProc,3) = '902' THEN 'Hematología'
+            WHEN LEFT(dp.CodiProc,3) = '903' THEN 'Química Clínica'
+            WHEN LEFT(dp.CodiProc,3) = '904' THEN 'Hormonas'
+            WHEN LEFT(dp.CodiProc,3) = '905' THEN 'Toxicología'
+            WHEN LEFT(dp.CodiProc,3) = '906' THEN 'Serología/Inmunología'
+            WHEN LEFT(dp.CodiProc,3) = '907' THEN 'Microbiología'
+            WHEN LEFT(dp.CodiProc,3) = '908' THEN 'Biología Molecular'
+            WHEN LEFT(dp.CodiProc,3) = '911' THEN 'Banco de Sangre'
+            ELSE 'Otros'
+        END                         AS GrupoLab,
+        COUNT(*)                    AS TotalResultados,
+        COUNT(DISTINCT dp.ConsAdmi) AS TotalPacientes
+    FROM DetaPrue dp
+    WHERE dp.FechDigi BETWEEN :fecha_inicio AND :fecha_fin
+    GROUP BY GrupoLab
+    ORDER BY TotalResultados DESC
+    """
+
+    def get_lab_por_ambito(self):
+        """Resultados de laboratorio por ámbito de atención"""
+        return """
+    SELECT
+        CASE a.TipoAten
+            WHEN 1 THEN 'Consulta Externa'
+            WHEN 2 THEN 'Hospitalización'
+            WHEN 3 THEN 'Urgencias'
+            WHEN 4 THEN 'PyP'
+            ELSE 'Otro'
+        END                         AS Ambito,
+        COUNT(*)                    AS TotalResultados,
+        COUNT(DISTINCT dp.ConsAdmi) AS TotalPacientes
+    FROM DetaPrue dp
+    JOIN Admision a ON a.ConsAdmi = dp.ConsAdmi
+    WHERE dp.FechDigi BETWEEN :fecha_inicio AND :fecha_fin
+      AND a.Anulado = 2
+    GROUP BY a.TipoAten
+    ORDER BY TotalResultados DESC
+    """
+
+    def get_lab_top_examenes(self):
+        """Top exámenes por número de órdenes (agrupado por CUPS)"""
+        return """
+    SELECT
+        dp.CodiProc                             AS CodigoCUPS,
+        MAX(cp.NombPrue)                        AS NombreExamen,
+        CASE
+            WHEN LEFT(dp.CodiProc,3) = '902' THEN 'Hematología'
+            WHEN LEFT(dp.CodiProc,3) = '903' THEN 'Química Clínica'
+            WHEN LEFT(dp.CodiProc,3) = '904' THEN 'Hormonas'
+            WHEN LEFT(dp.CodiProc,3) = '905' THEN 'Toxicología'
+            WHEN LEFT(dp.CodiProc,3) = '906' THEN 'Serología/Inmunología'
+            WHEN LEFT(dp.CodiProc,3) = '907' THEN 'Microbiología'
+            WHEN LEFT(dp.CodiProc,3) = '908' THEN 'Biología Molecular'
+            WHEN LEFT(dp.CodiProc,3) = '911' THEN 'Banco de Sangre'
+            ELSE 'Otros'
+        END                                     AS GrupoLab,
+        COUNT(DISTINCT dp.ConsHoPr)             AS TotalOrdenes,
+        COUNT(DISTINCT dp.ConsAdmi)             AS TotalPacientes
+    FROM DetaPrue dp
+    JOIN CodiPrue cp ON cp.CodiProc = dp.CodiProc
+        AND cp.CodiPrue = dp.CodiPrue
+    WHERE dp.FechDigi BETWEEN :fecha_inicio AND :fecha_fin
+    GROUP BY dp.CodiProc
+    ORDER BY TotalOrdenes DESC
+    LIMIT 50
+    """
+
+    def get_lab_tendencia_diaria(self):
+        """Tendencia diaria de resultados de laboratorio"""
+        return """
+    SELECT
+        DATE(FechDigi)              AS Fecha,
+        COUNT(*)                    AS TotalResultados,
+        COUNT(DISTINCT ConsAdmi)    AS TotalPacientes,
+        COUNT(DISTINCT CodiProc)    AS TiposExamen
+    FROM DetaPrue
+    WHERE FechDigi BETWEEN :fecha_inicio AND :fecha_fin
+    GROUP BY DATE(FechDigi)
+    ORDER BY Fecha
+    """
+
+    # ========================================================================
+    # ACTIVIDAD CLÍNICA — ÁMBITO PROFESIONALES
+    # ========================================================================
+
+    def get_profesionales_por_ambito(self):
+        """Atenciones de profesionales discriminadas por ámbito clínico"""
+        return """
+    SELECT
+        CASE a.TipoAten
+            WHEN 1 THEN 'Consulta Externa'
+            WHEN 2 THEN 'Intrahospitalario'
+            WHEN 3 THEN 'Urgencias'
+            WHEN 4 THEN 'PyP'
+            ELSE 'Otro'
+        END                         AS Ambito,
+        COUNT(*)                    AS TotalAtenciones,
+        COUNT(DISTINCT rc.UsuaCons) AS Profesionales,
+        COUNT(CASE WHEN rc.EstaReal = 1 THEN 1 END) AS Realizadas,
+        ROUND(
+            COUNT(CASE WHEN rc.EstaReal = 1 THEN 1 END) * 100.0
+            / NULLIF(COUNT(*), 0), 1
+        )                           AS PctCumplimiento
+    FROM RipsCons rc
+    JOIN Admision a ON a.ConsAdmi = rc.ConsAdmi
+    WHERE rc.FechCons BETWEEN :fecha_inicio AND :fecha_fin
+      AND rc.UsuaCons IS NOT NULL
+      AND rc.UsuaCons != ''
+      AND a.Anulado = 2
+    GROUP BY a.TipoAten
+    ORDER BY TotalAtenciones DESC
+    """
+
+    # ========================================================================
     # RESOLUCIÓN 373 — TIEMPOS DE ESPERA URGENCIAS
     # ========================================================================
 
@@ -1600,3 +1807,281 @@ class SIHOSQueries:
       AND e.deleted_at IS NULL
     ORDER BY e.tipo_rda_id, a.created_at DESC
     """
+
+    # ─── SISMED ───────────────────────────────────────────────────────────────
+
+    def get_sismed_kpis(self):
+        """KPIs globales SISMED: servicios distintos, unidades, valor total, precio promedio."""
+        return """
+        SELECT
+            COUNT(DISTINCT df.CodiServ)  AS items_distintos,
+            SUM(df.CantReal)             AS total_unidades,
+            SUM(df.ValoTota)             AS valor_total,
+            AVG(df.ValoUnit)             AS precio_promedio
+        FROM DetaFact df
+        WHERE df.CodiDocu = 'LIQ'
+          AND df.CodiServ IS NOT NULL AND df.CodiServ != ''
+          AND df.ValoUnit > 0
+          AND df.FechDigi BETWEEN :fecha_inicio AND :fecha_fin
+        """
+
+    def get_sismed_top_items(self, top_n: int = 20):
+        """Top N servicios por valor total, con nombre desde CodiProc."""
+        return f"""
+        SELECT
+            df.CodiMedi                             AS categoria,
+            df.CodiServ                             AS codigo,
+            COALESCE(cp.NombProc, df.CodiServ)      AS descripcion,
+            MAX(df.EsPOS)                           AS es_pos,
+            SUM(df.CantReal)                        AS total_unidades,
+            SUM(df.ValoTota)                        AS total_valor,
+            AVG(df.ValoUnit)                        AS precio_promedio
+        FROM DetaFact df
+        LEFT JOIN CodiProc cp ON df.CodiServ = cp.CodiProc
+        WHERE df.CodiDocu = 'LIQ'
+          AND df.CodiServ IS NOT NULL AND df.CodiServ != ''
+          AND df.ValoUnit > 0
+          AND df.FechDigi BETWEEN :fecha_inicio AND :fecha_fin
+        GROUP BY df.CodiMedi, df.CodiServ, cp.NombProc
+        ORDER BY total_valor DESC
+        LIMIT {top_n}
+        """
+
+    def get_sismed_tendencia(self):
+        """Tendencia mensual de ventas SISMED."""
+        return """
+        SELECT
+            DATE_FORMAT(FechDigi, '%Y-%m') AS mes,
+            COUNT(DISTINCT CodiServ)       AS items_distintos,
+            SUM(CantReal)                  AS total_unidades,
+            SUM(ValoTota)                  AS total_valor
+        FROM DetaFact
+        WHERE CodiDocu = 'LIQ'
+          AND CodiServ IS NOT NULL AND CodiServ != ''
+          AND ValoUnit > 0
+          AND FechDigi BETWEEN :fecha_inicio AND :fecha_fin
+        GROUP BY mes
+        ORDER BY mes
+        """
+
+    def get_sismed_pos_distribucion(self):
+        """Distribución POS vs No POS."""
+        return """
+        SELECT
+            EsPOS,
+            COUNT(DISTINCT CodiServ)  AS items_distintos,
+            SUM(CantReal)             AS unidades,
+            SUM(ValoTota)             AS valor_total
+        FROM DetaFact
+        WHERE CodiDocu = 'LIQ'
+          AND ValoUnit > 0
+          AND FechDigi BETWEEN :fecha_inicio AND :fecha_fin
+        GROUP BY EsPOS
+        """
+
+    def get_cierres_tardios(self):
+        """Admisiones cerradas con más de 30 días entre ingreso y egreso.
+        FechModi = FechEgre en estos casos (el sistema asigna fecha de modificación como egreso)."""
+        return """
+        SELECT
+            a.ConsAdmi,
+            COALESCE(p.NombUsua, a.NumeUsua)        AS Paciente,
+            a.FechIngr                               AS FechaIngreso,
+            a.FechEgre                               AS FechaEgreso,
+            DATEDIFF(a.FechEgre, a.FechIngr)         AS DiasEstancia,
+            COALESCE(cs.NombServ, a.CodiServ)        AS Servicio,
+            a.DiagIngr                               AS Diagnostico,
+            a.UsuaModi                               AS UsuarioCierre,
+            a.FechModi                               AS FechaCierre,
+            CASE
+                WHEN DATEDIFF(a.FechEgre, a.FechIngr) > 365 THEN '⛔ Más de 1 año'
+                WHEN DATEDIFF(a.FechEgre, a.FechIngr) > 180 THEN '🔴 6-12 meses'
+                WHEN DATEDIFF(a.FechEgre, a.FechIngr) > 90  THEN '🟠 3-6 meses'
+                WHEN DATEDIFF(a.FechEgre, a.FechIngr) > 30  THEN '🟡 1-3 meses'
+            END AS NivelAlerta
+        FROM Admision a
+        LEFT JOIN CodiServ cs ON cs.CodiServ = a.CodiServ
+        LEFT JOIN Paciente p  ON p.NumeUsua  = a.NumeUsua
+        WHERE a.TipoAten = 2
+          AND a.Anulado  = 2
+          AND a.FechEgre IS NOT NULL
+          AND a.FechEgre != '0000-00-00'
+          AND a.FechModi  = a.FechEgre
+          AND DATEDIFF(a.FechEgre, a.FechIngr) > 30
+          AND a.FechEgre BETWEEN :fecha_inicio AND :fecha_fin
+        ORDER BY DiasEstancia DESC
+        """
+
+    # ─── ADMISIONES SIN CERRAR ────────────────────────────────────────────────
+    def get_admisiones_sin_cerrar_resumen(self):
+        return """
+        SELECT
+            CASE
+                WHEN DATEDIFF(CURDATE(), FechIngr) = 0           THEN '0. Hoy'
+                WHEN DATEDIFF(CURDATE(), FechIngr) BETWEEN 1 AND 2    THEN '1. 1-2 días'
+                WHEN DATEDIFF(CURDATE(), FechIngr) BETWEEN 3 AND 7    THEN '2. 3-7 días'
+                WHEN DATEDIFF(CURDATE(), FechIngr) BETWEEN 8 AND 30   THEN '3. 8-30 días'
+                WHEN DATEDIFF(CURDATE(), FechIngr) BETWEEN 31 AND 90  THEN '4. 31-90 días'
+                WHEN DATEDIFF(CURDATE(), FechIngr) BETWEEN 91 AND 365 THEN '5. 91-365 días'
+                ELSE '6. Más de 1 año'
+            END AS rango,
+            COUNT(*) AS total,
+            AVG(DATEDIFF(CURDATE(), FechIngr)) AS dias_promedio
+        FROM Admision
+        WHERE Cerrado = 2
+          AND Anulado = 2
+          AND FechEgre IS NULL
+        GROUP BY rango
+        ORDER BY rango
+        """
+
+    def get_admisiones_sin_cerrar_detalle(self, dias_minimo: int = 30,
+                                           tipo_aten: int = None,
+                                           limit: int = 500):
+        filtro_tipo = f"AND a.TipoAten = {int(tipo_aten)}" if tipo_aten else ""
+        return f"""
+        SELECT
+            a.ConsAdmi,
+            a.FechIngr,
+            DATEDIFF(CURDATE(), a.FechIngr) AS dias_abierta,
+            CASE a.TipoAten
+                WHEN 1 THEN 'Consulta Externa'
+                WHEN 2 THEN 'Hospitalización'
+                WHEN 3 THEN 'Urgencias'
+                WHEN 4 THEN 'PyP'
+                ELSE CONCAT('Tipo ', a.TipoAten)
+            END AS tipo_atencion,
+            a.CodiServ,
+            a.UsuaDigi AS usuario_apertura,
+            a.UsuaModi AS usuario_modifico
+        FROM Admision a
+        WHERE a.Cerrado = 2
+          AND a.Anulado = 2
+          AND a.FechEgre IS NULL
+          AND DATEDIFF(CURDATE(), a.FechIngr) >= {int(dias_minimo)}
+          {filtro_tipo}
+        ORDER BY dias_abierta DESC
+        LIMIT {int(limit)}
+        """
+
+    # ─── CAMAS BLOQUEADAS ─────────────────────────────────────────────────────
+    def get_camas_bug_sinergia(self):
+        return """
+        SELECT
+            cc.CodiCama,
+            cc.NombCama,
+            cc.CodiServ,
+            cc.ConsAdmi,
+            CASE
+                WHEN a.Cerrado = 1 AND a.Anulado = 2 THEN 'CERRADA'
+                WHEN a.Cerrado = 1 AND a.Anulado = 1 THEN 'ANULADA'
+                ELSE 'OTRO'
+            END AS tipo_bug,
+            a.FechIngr,
+            a.FechEgre,
+            a.UsuaModi                       AS cerro,
+            DATEDIFF(CURDATE(), a.FechIngr)  AS dias_bloqueada
+        FROM CodiCama cc
+        JOIN Admision a ON cc.ConsAdmi = a.ConsAdmi
+        WHERE cc.ConsAdmi IS NOT NULL
+          AND cc.ConsAdmi != ''
+          AND a.Cerrado = 1
+        ORDER BY dias_bloqueada DESC
+        """
+
+    def get_camas_proceso_incompleto(self):
+        return """
+        SELECT
+            cc.CodiCama,
+            cc.NombCama,
+            cc.CodiServ,
+            cc.ConsAdmi,
+            a.FechIngr,
+            a.FechEgre,
+            DATEDIFF(CURDATE(), a.FechIngr)  AS dias_abierta,
+            DATEDIFF(CURDATE(), a.FechEgre)  AS dias_desde_egreso,
+            a.UsuaModi                       AS responsable
+        FROM CodiCama cc
+        JOIN Admision a ON cc.ConsAdmi = a.ConsAdmi
+        WHERE cc.ConsAdmi IS NOT NULL
+          AND cc.ConsAdmi != ''
+          AND a.Cerrado = 2
+          AND a.Anulado = 2
+          AND a.FechEgre IS NOT NULL
+          AND a.FechEgre != '0000-00-00'
+        ORDER BY dias_desde_egreso DESC
+        """
+
+    def get_camas_resumen_por_servicio(self):
+        return """
+        SELECT
+            cc.CodiServ,
+            SUM(CASE WHEN a.Cerrado = 1 THEN 1 ELSE 0 END)            AS bug_sinergia,
+            SUM(CASE WHEN a.Cerrado = 2
+                          AND a.FechEgre IS NOT NULL
+                          AND a.FechEgre != '0000-00-00'
+                     THEN 1 ELSE 0 END)                                AS proceso_incompleto,
+            COUNT(*)                                                    AS total_bloqueadas
+        FROM CodiCama cc
+        JOIN Admision a ON cc.ConsAdmi = a.ConsAdmi
+        WHERE cc.ConsAdmi IS NOT NULL AND cc.ConsAdmi != ''
+          AND NOT (a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL)
+        GROUP BY cc.CodiServ
+        ORDER BY total_bloqueadas DESC
+        """
+
+    # ─── USUARIOS SIHOS ───────────────────────────────────────────────────────
+    def get_usuarios_resumen(self):
+        return """
+        SELECT
+            u.Login,
+            u.Nombre,
+            u.CC,
+            u.CorrUsua                                           AS email,
+            CASE u.Activo WHEN 1 THEN 'Activo' ELSE 'Inactivo' END  AS estado,
+            CASE u.UsuaAsis WHEN 1 THEN 'Sí' ELSE 'No' END      AS es_asistencial,
+            CASE u.PersAtie
+                WHEN 1 THEN 'Médico'
+                WHEN 2 THEN 'Médico Especialista'
+                WHEN 3 THEN 'Enfermera'
+                WHEN 4 THEN 'Aux. Enfermería'
+                WHEN 5 THEN 'Administrativo'
+                ELSE CONCAT('Tipo ', u.PersAtie)
+            END AS tipo_personal,
+            u.RegiProf                                           AS registro_prof,
+            CASE WHEN u.FotoFirm IS NULL OR u.FotoFirm = ''
+                 THEN 'No' ELSE 'Sí'
+            END                                                  AS tiene_firma,
+            g.NombGrup                                           AS grupo_principal,
+            g.CodiGrup
+        FROM Usuarios u
+        LEFT JOIN UsuaGrup ug ON u.Login = ug.Login
+        LEFT JOIN GrupUsua g  ON ug.CodiGrup = g.CodiGrup
+        ORDER BY u.Activo DESC, u.Nombre
+        """
+
+    def get_usuarios_por_grupo(self):
+        return """
+        SELECT
+            g.CodiGrup,
+            g.NombGrup,
+            COUNT(*) AS total_usuarios,
+            SUM(CASE WHEN u.Activo = 1  THEN 1 ELSE 0 END) AS activos,
+            SUM(CASE WHEN u.Activo != 1 THEN 1 ELSE 0 END) AS inactivos
+        FROM UsuaGrup ug
+        JOIN GrupUsua g ON ug.CodiGrup = g.CodiGrup
+        JOIN Usuarios u ON ug.Login    = u.Login
+        GROUP BY g.CodiGrup, g.NombGrup
+        ORDER BY total_usuarios DESC
+        """
+
+
+def dataframe_to_excel(df) -> bytes:
+    """Convierte un DataFrame a bytes de Excel para st.download_button."""
+    import io
+    import pandas as pd
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+    return buf.getvalue()
+

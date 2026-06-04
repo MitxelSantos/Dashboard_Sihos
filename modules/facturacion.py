@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from utils.db_connector import get_db_connector
-from utils.queries import SIHOSQueries
+from utils.queries import SIHOSQueries, dataframe_to_excel
 from config.settings import COLORS, CACHE_TTL
 from components.widgets import (
     get_fecha_rango_texto,
@@ -375,6 +375,12 @@ ORDER BY Fecha
                 file_name=f"facturacion_{opcion_dist.lower().replace(' ', '_')}_{fecha_inicio}_{fecha_fin}.csv",
                 mime="text/csv"
             )
+            st.download_button(
+                label="📥 Descargar Excel",
+                data=dataframe_to_excel(datos_dist),
+                file_name=f"facturacion_{opcion_dist.lower().replace(' ', '_')}_{fecha_inicio}_{fecha_fin}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
     else:
         st.info(f"No hay datos disponibles para {opcion_dist}")
     
@@ -614,7 +620,13 @@ ORDER BY Fecha
                 file_name=f"top_facturas_{fecha_inicio}_{fecha_fin}.csv",
                 mime="text/csv"
             )
-        
+            st.download_button(
+                label="📥 Descargar Excel",
+                data=dataframe_to_excel(datos_mostrar),
+                file_name=f"top_facturas_{fecha_inicio}_{fecha_fin}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
     else:
         st.info("No hay datos de facturas")
     

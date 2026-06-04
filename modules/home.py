@@ -324,39 +324,39 @@ def render_inicio():
     render_section_divider()
 
     # =======================================================================
-    # INTEROPERABILIDAD RDA
+    # INTEROPERABILIDAD RDA — HOY
     # =======================================================================
     render_section_banner("🔗", "Interoperabilidad RDA — Hoy")
 
     if data.get('rda') is not None and not data['rda'].empty:
         rda = data['rda'].iloc[0]
-        total = int(rda.get('Total') or 0) or 1
-
+        total   = int(rda.get('Total',      0) or 0) or 1
         enviados   = int(rda.get('Enviados',   0) or 0)
         pendientes = int(rda.get('Pendientes', 0) or 0)
         rechazados = int(rda.get('Rechazados', 0) or 0)
 
         col1, col2, col3 = st.columns(3)
-
         with col1:
-            st.metric(
-                label="🟢 Enviados",
-                value=f"{enviados:,}",
-                delta=f"{enviados / total * 100:.1f}%"
+            render_metric_card(
+                "🟢", "ENVIADOS HOY",
+                f"{enviados:,}",
+                COLORS['success'], COLORS['secondary']
             )
+            st.caption(f"↑ {enviados/total*100:.1f}% del total")
         with col2:
-            st.metric(
-                label="🟡 Pendientes",
-                value=f"{pendientes:,}",
-                delta=f"{pendientes / total * 100:.1f}%"
+            render_metric_card(
+                "🟡", "PENDIENTES HOY",
+                f"{pendientes:,}",
+                COLORS['warning'], COLORS['secondary']
             )
+            st.caption(f"↑ {pendientes/total*100:.1f}% del total")
         with col3:
-            st.metric(
-                label="🔴 Rechazados",
-                value=f"{rechazados:,}",
-                delta=f"{rechazados / total * 100:.1f}%",
-                delta_color="inverse"
+            render_metric_card(
+                "🔴", "RECHAZADOS HOY",
+                f"{rechazados:,}",
+                COLORS['danger'], COLORS['secondary']
             )
+            st.caption(f"↑ {rechazados/total*100:.1f}% del total")
 
         st.caption("Ver detalle completo en la pestaña **📊 Reportes → Interoperabilidad RDA**")
     else:

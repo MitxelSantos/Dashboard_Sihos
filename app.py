@@ -18,9 +18,10 @@ from modules.facturacion import render_facturacion
 from modules.procedimientos import render_procedimientos
 from modules.cirugias import render_cirugias
 from modules.ocupacion import render_ocupacion
-from modules.profesionales import render_profesionales
-from modules.citas import render_citas
+from modules.laboratorio import render_laboratorio
+from modules.actividad import render_actividad
 from modules.reportes import render_reportes
+from modules.inventario import show_inventario
 from modules.consultas_sql import render_consultas_sql
 
 # ============================================================================
@@ -119,16 +120,17 @@ if st.sidebar.button("🔓 Cerrar Sesión"):
 # CONTENIDO DE PESTAÑAS (filtradas por rol)
 # ============================================================================
 tab_functions = {
-    "home": render_inicio,
-    "admisiones": render_admisiones,
-    "facturacion": render_facturacion,
+    "home":           render_inicio,
+    "admisiones":     render_admisiones,
+    "facturacion":    render_facturacion,
     "procedimientos": render_procedimientos,
-    "cirugias": render_cirugias,
-    "ocupacion": render_ocupacion,
-    "profesionales": render_profesionales,
-    "citas": render_citas,
-    "reportes": render_reportes,
-    "consultas_sql": render_consultas_sql
+    "laboratorio":    render_laboratorio,
+    "cirugias":       render_cirugias,
+    "ocupacion":      render_ocupacion,
+    "actividad":      render_actividad,
+    "reportes":       render_reportes,
+    "inventario_ti":  show_inventario,
+    "consultas_sql":  render_consultas_sql,
 }
 
 tabs_visibles = _tabs_permitidas()

@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from utils.db_connector import get_db_connector
-from utils.queries import SIHOSQueries
+from utils.queries import SIHOSQueries, dataframe_to_excel
 from config.settings import COLORS, CACHE_TTL
 from components.widgets import (
     render_metric_card,
@@ -116,8 +116,11 @@ def render_admisiones():
             data['tasa_readmision'] = db.execute_query(
                 queries.get_tasa_readmision_por_servicio(), params
             )
-            data['admisiones_abiertas'] = db.execute_query(
-                queries.get_admisiones_abiertas()
+            data['estancia_servicio'] = db.execute_query(
+                queries.get_estancia_por_servicio(), params
+            )
+            data['estancias_prolongadas'] = db.execute_query(
+                queries.get_estancias_prolongadas(), params
             )
 
         except Exception as e:
@@ -147,42 +150,43 @@ def render_admisiones():
     if not data['estadisticas'].empty:
         stats = data['estadisticas'].iloc[0]
         
-        col1, col2, col3, col4 = st.columns(4)
-        
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
+
         with col1:
             render_metric_card(
-                "📊",
-                "TOTAL ADMISIONES",
+                "📊", "TOTAL ADMISIONES",
                 f"{int(stats.get('Total_Admisiones', 0)):,}",
-                COLORS['primary'],
-                COLORS['secondary']
+                COLORS['primary'], COLORS['secondary']
             )
-        
         with col2:
             render_metric_card(
-                "✅",
-                "ACTIVAS",
+                "✅", "ACTIVAS",
                 f"{int(stats.get('Activas', 0)):,}",
-                COLORS['success'],
-                COLORS['info']
+                COLORS['success'], COLORS['info']
             )
-        
         with col3:
             render_metric_card(
-                "🚨",
-                "URGENCIAS",
+                "🚨", "URGENCIAS",
                 f"{int(stats.get('Urgencias', 0)):,}",
-                COLORS['warning'],
-                COLORS['danger']
+                COLORS['warning'], COLORS['danger']
             )
-        
         with col4:
             render_metric_card(
-                "🛏️",
-                "HOSPITALIZACIÓN",
+                "🛏️", "HOSPITALIZACIÓN",
                 f"{int(stats.get('Hospitalizacion', 0)):,}",
-                COLORS['info'],
-                COLORS['primary']
+                COLORS['info'], COLORS['primary']
+            )
+        with col5:
+            render_metric_card(
+                "👨‍⚕️", "CONSULTA EXTERNA",
+                f"{int(stats.get('Consulta_Externa', 0)):,}",
+                COLORS['secondary'], COLORS['success']
+            )
+        with col6:
+            render_metric_card(
+                "💚", "PyP",
+                f"{int(stats.get('PyP', 0)):,}",
+                COLORS['success'], COLORS['secondary']
             )
     
     render_section_divider()
@@ -403,6 +407,12 @@ def render_admisiones():
                 data=csv,
                 file_name=f"admisiones_{opcion_dist.lower().replace(' ', '_')}_{fecha_inicio}_{fecha_fin}.csv",
                 mime="text/csv"
+            )
+            st.download_button(
+                label="📥 Descargar Excel",
+                data=dataframe_to_excel(datos_dist),
+                file_name=f"admisiones_{opcion_dist.lower().replace(' ', '_')}_{fecha_inicio}_{fecha_fin}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
     else:
         st.info(f"No hay datos disponibles para {opcion_dist}")
@@ -711,6 +721,12 @@ def render_admisiones():
                 file_name=f"top_diagnosticos_{fecha_inicio}_{fecha_fin}.csv",
                 mime="text/csv"
             )
+            st.download_button(
+                label="📥 Descargar Excel",
+                data=dataframe_to_excel(datos_mostrar),
+                file_name=f"top_diagnosticos_{fecha_inicio}_{fecha_fin}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
     else:
         st.info("No hay datos de diagnósticos de ingreso")
     
@@ -719,32 +735,91 @@ def render_admisiones():
     # =======================================================================
     # SECCIÓN: TIEMPOS DE ESTANCIA
     # =======================================================================
-    render_section_banner("⏱️", "Tiempos de Estancia - Hospitalización", rango_fechas)
-    
+    render_section_banner("⏱️", "Tiempos de Estancia — Hospitalización", rango_fechas)
+
     if not data['tiempos_estancia'].empty:
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            fig_estancia = px.pie(
+        col_pie, col_serv = st.columns([1, 2])
+
+        with col_pie:
+            fig_pie = px.pie(
                 data['tiempos_estancia'],
                 values='Total',
                 names='Rango',
-                title="Distribución de Tiempos de Estancia",
-                color_discrete_sequence=[COLORS['success'], COLORS['warning'], COLORS['danger']]
+                title="Distribución por rango de días",
+                color_discrete_sequence=[
+                    COLORS['success'], COLORS['info'],
+                    COLORS['warning'], COLORS['danger'], '#8B0000'
+                ]
             )
-            fig_estancia.update_traces(textposition='inside', textinfo='percent+label+value')
-            fig_estancia.update_layout(height=400)
-            st.plotly_chart(fig_estancia, use_container_width=True)
-        
-        with col2:
-            st.markdown("### 📊 Resumen")
-            for _, row in data['tiempos_estancia'].iterrows():
-                st.metric(
-                    label=row['Rango'],
-                    value=f"{int(row['Total']):,} casos"
+            fig_pie.update_traces(
+                textposition='inside',
+                textinfo='percent+label+value'
+            )
+            fig_pie.update_layout(height=380)
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+        with col_serv:
+            if not data['estancia_servicio'].empty:
+                fig_serv = px.bar(
+                    data['estancia_servicio'],
+                    x='PromDias',
+                    y='Servicio',
+                    orientation='h',
+                    color='PromDias',
+                    color_continuous_scale='RdYlGn_r',
+                    title='Estancia promedio por servicio (días)',
+                    text='PromDias',
+                    hover_data=['TotalEgresos', 'MinDias', 'MaxDias']
                 )
+                fig_serv.update_traces(
+                    texttemplate='%{text:.1f} días',
+                    textposition='outside'
+                )
+                fig_serv.update_layout(
+                    height=380,
+                    yaxis={'categoryorder': 'total ascending'},
+                    showlegend=False
+                )
+                st.plotly_chart(fig_serv, use_container_width=True)
+
+        st.caption(
+            "⚠️ El promedio excluye estancias > 60 días para evitar distorsión "
+            "por casos crónicos/sociales. Los casos prolongados se muestran abajo."
+        )
+
+        if not data['estancia_servicio'].empty:
+            with st.expander("📋 Ver detalle por servicio"):
+                st.dataframe(
+                    data['estancia_servicio'],
+                    use_container_width=True,
+                    hide_index=True
+                )
+                st.download_button(
+                    "📥 Descargar CSV",
+                    data['estancia_servicio'].to_csv(index=False, encoding='utf-8-sig'),
+                    f"estancia_servicio_{fecha_inicio}_{fecha_fin}.csv",
+                    mime="text/csv"
+                )
+
+        if not data.get('estancias_prolongadas', pd.DataFrame()).empty:
+            df_prol = data['estancias_prolongadas']
+            st.markdown(f"#### ⚠️ Admisiones con posible cierre tardío (> 30 días): {len(df_prol)}")
+            st.warning(
+                "Estas admisiones tienen una diferencia mayor a 30 días entre ingreso y egreso. "
+                "En la mayoría de los casos corresponden a **admisiones que no se cerraron oportunamente** "
+                "en el sistema, no a pacientes realmente hospitalizados por ese período. "
+                "Se recomienda revisar con el área de sistemas y auditoría."
+            )
+            st.dataframe(df_prol, use_container_width=True, hide_index=True)
+            st.download_button(
+                "📥 Descargar para auditoría CSV",
+                df_prol.to_csv(index=False, encoding='utf-8-sig'),
+                f"cierres_tardios_{fecha_inicio}_{fecha_fin}.csv",
+                mime="text/csv"
+            )
+
     else:
-        st.info("No hay datos de tiempos de estancia")
+        st.info("No hay egresos registrados para el período seleccionado.")
 
     render_section_divider()
 
@@ -821,132 +896,16 @@ def render_admisiones():
                 file_name=f"top_readmisiones_{fecha_inicio}_{fecha_fin}.csv",
                 mime="text/csv"
             )
-        
+            st.download_button(
+                label="📥 Descargar Excel",
+                data=dataframe_to_excel(datos_mostrar),
+                file_name=f"top_readmisiones_{fecha_inicio}_{fecha_fin}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
     else:
         st.info("No hay datos de readmisiones")
     
-    render_section_divider()
+    # Módulo "Admisiones Abiertas" movido a Reportes → tab "Admisiones sin Cerrar"
 
-    # =======================================================================
-    # SECCIÓN: ADMISIONES ABIERTAS CON CAMA
-    # =======================================================================
-    render_section_banner("🔓", "Admisiones Abiertas con Cama Asignada")
-
-    if not data['admisiones_abiertas'].empty:
-        df_ab = data['admisiones_abiertas'].copy()
-
-        # --- Filtros locales ---
-        col_f1, col_f2, col_f3 = st.columns(3)
-
-        with col_f1:
-            tipos_disp = ["Todos"] + sorted(df_ab["TipoAtencion"].dropna().unique().tolist())
-            tipo_sel = st.selectbox("Tipo de atención", tipos_disp, key="ab_tipo")
-
-        with col_f2:
-            servicios_disp = ["Todos"] + sorted(df_ab["ServicioActual"].dropna().unique().tolist())
-            servicio_sel = st.selectbox("Servicio actual", servicios_disp, key="ab_serv")
-
-        with col_f3:
-            dias_max = int(df_ab["DiasAbierta"].max()) if not df_ab.empty else 365
-            dias_filtro = st.slider(
-                "Días abierta (mínimo)", 0, dias_max, 0, key="ab_dias"
-            )
-
-        # Aplicar filtros
-        if tipo_sel != "Todos":
-            df_ab = df_ab[df_ab["TipoAtencion"] == tipo_sel]
-        if servicio_sel != "Todos":
-            df_ab = df_ab[df_ab["ServicioActual"] == servicio_sel]
-        df_ab = df_ab[df_ab["DiasAbierta"] >= dias_filtro]
-
-        # --- KPIs ---
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            render_metric_card("🔓", "TOTAL ABIERTAS", f"{len(df_ab):,}",
-                               COLORS['danger'], COLORS['warning'])
-        with col2:
-            prom_dias = df_ab["DiasAbierta"].mean() if not df_ab.empty else 0
-            render_metric_card("📅", "DÍAS PROM.", f"{prom_dias:.1f}",
-                               COLORS['warning'], COLORS['info'])
-        with col3:
-            max_dias = int(df_ab["DiasAbierta"].max()) if not df_ab.empty else 0
-            render_metric_card("⚠️", "MÁX. DÍAS", f"{max_dias:,}",
-                               COLORS['danger'], COLORS['warning'])
-        with col4:
-            hosp = len(df_ab[df_ab["TipoAtencion"] == "Hospitalización"])
-            render_metric_card("🛏️", "HOSPITALIZADAS", f"{hosp:,}",
-                               COLORS['primary'], COLORS['secondary'])
-
-        render_section_divider()
-
-        # --- Gráficas ---
-        col_g1, col_g2 = st.columns(2)
-
-        with col_g1:
-            if not df_ab.empty:
-                dist_serv = (
-                    df_ab.groupby("ServicioActual")
-                    .size().reset_index(name="Total")
-                    .sort_values("Total", ascending=False)
-                    .head(15)
-                )
-                fig1 = px.bar(
-                    dist_serv, x="Total", y="ServicioActual",
-                    orientation="h",
-                    title="Admisiones abiertas por Servicio Actual",
-                    color="Total", color_continuous_scale="Reds"
-                )
-                fig1.update_layout(
-                    height=400, yaxis={"categoryorder": "total ascending"},
-                    showlegend=False
-                )
-                st.plotly_chart(fig1, use_container_width=True)
-
-        with col_g2:
-            if not df_ab.empty:
-                dist_dias = df_ab.copy()
-                dist_dias["RangoDias"] = pd.cut(
-                    dist_dias["DiasAbierta"],
-                    bins=[-1, 1, 7, 30, 90, 365, 99999],
-                    labels=["Hoy", "2-7 días", "8-30 días",
-                            "31-90 días", "91-365 días", "Más de 1 año"]
-                )
-                dist_rango = (
-                    dist_dias.groupby("RangoDias", observed=True)
-                    .size().reset_index(name="Total")
-                )
-                fig2 = px.pie(
-                    dist_rango, values="Total", names="RangoDias",
-                    title="Distribución por antigüedad",
-                    color_discrete_sequence=[
-                        COLORS['success'], COLORS['info'], COLORS['warning'],
-                        COLORS['danger'], '#8B0000', '#4B0000'
-                    ]
-                )
-                fig2.update_traces(textposition="inside", textinfo="percent+label+value")
-                fig2.update_layout(height=400)
-                st.plotly_chart(fig2, use_container_width=True)
-
-        # --- Tabla detallada ---
-        with st.expander("📋 Ver tabla detallada"):
-            columnas_mostrar = [
-                "ConsAdmi", "Paciente", "TipoAtencion", "ServicioIngreso",
-                "ServicioActual", "CodiCama", "NombCama", "Diagnostico",
-                "FechaIngreso", "DiasAbierta", "QuienAbrio", "ResponsableCierre",
-                "UltimaModificacion"
-            ]
-            cols_disp = [c for c in columnas_mostrar if c in df_ab.columns]
-            st.dataframe(df_ab[cols_disp], use_container_width=True, hide_index=True)
-
-            csv = df_ab[cols_disp].to_csv(index=False, encoding='utf-8-sig')
-            st.download_button(
-                label="📥 Descargar CSV",
-                data=csv,
-                file_name=f"admisiones_abiertas_{fecha_inicio}_{fecha_fin}.csv",
-                mime="text/csv"
-            )
-    else:
-        st.success("✅ No hay admisiones abiertas con cama asignada en este momento.")
-
-    # Footer
     render_footer()

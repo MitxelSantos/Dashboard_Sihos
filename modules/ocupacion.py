@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from utils.db_connector import get_db_connector
-from utils.queries import SIHOSQueries
+from utils.queries import SIHOSQueries, dataframe_to_excel
 from config.settings import COLORS, CACHE_TTL
 from components.widgets import (
     get_fecha_rango_texto,
@@ -28,7 +28,13 @@ def render_ocupacion():
     """Función principal del módulo de Ocupación"""
     
     render_section_banner("🛏️", "Ocupación de Camas en Tiempo Real")
-    
+
+    st.info(
+        "ℹ️ La ocupación muestra únicamente pacientes con admisión activa y sin egreso registrado "
+        "(≤60 días). Las admisiones con proceso incompleto o bug de sistema se analizan en "
+        "**Reportes → Camas Bloqueadas**."
+    )
+
     @st.cache_data(ttl=300)  # Cache de 5 minutos
     def load_ocupacion_data():
         db = get_db_connector()
@@ -186,6 +192,19 @@ def render_ocupacion():
 
         with st.expander("📋 Ver tabla detallada"):
             st.dataframe(datos_dist, use_container_width=True, hide_index=True)
+            csv_ocu = datos_dist.to_csv(index=False, encoding='utf-8-sig')
+            st.download_button(
+                label="📥 Descargar CSV",
+                data=csv_ocu,
+                file_name=f"ocupacion_{opcion_dist.lower().replace(' ', '_')}.csv",
+                mime="text/csv"
+            )
+            st.download_button(
+                label="📥 Descargar Excel",
+                data=dataframe_to_excel(datos_dist),
+                file_name=f"ocupacion_{opcion_dist.lower().replace(' ', '_')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
     else:
         st.info(f"No hay datos para {opcion_dist}")
     

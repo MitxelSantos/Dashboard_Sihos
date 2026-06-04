@@ -9,60 +9,24 @@ HOSPITAL_SUBTITLE = "Sistema de Información Hospitalaria - Líbano, Tolima"
 
 # Configuración de pestañas
 TABS_CONFIG = {
-    "home": {
-        "name": "Home",
-        "icon": "🏠"
-    },
-    "admisiones": {
-        "name": "Admisiones",
-        "icon": "🏥"
-    },
-    "facturacion": {
-        "name": "Facturación",
-        "icon": "💰"
-    },
-    "procedimientos": {
-        "name": "Procedimientos",
-        "icon": "🔬"
-    },
-    "cirugias": {
-        "name": "Cirugías",
-        "icon": "⚕️"
-    },
-    "ocupacion": {
-        "name": "Ocupación",
-        "icon": "🛏️"
-    },
-    "profesionales": {
-        "name": "Profesionales",
-        "icon": "👨‍⚕️"
-    },
-    "citas": {
-        "name": "Citas",
-        "icon": "📅"
-    },
-    "reportes": {
-        "name": "Reportes",
-        "icon": "📊"
-    },
-    "consultas_sql":{
-        "name": "consultas_sql",
-        "icon": "🖥️"
-    }
+    "home":           {"name": "Home",             "icon": "🏠"},
+    "admisiones":     {"name": "Admisiones",        "icon": "🏥"},
+    "facturacion":    {"name": "Facturación",        "icon": "💰"},
+    "procedimientos": {"name": "Procedimientos",     "icon": "🔬"},
+    "laboratorio":    {"name": "Laboratorio",        "icon": "🧪"},
+    "cirugias":       {"name": "Cirugías",           "icon": "⚕️"},
+    "ocupacion":      {"name": "Ocupación",          "icon": "🛏️"},
+    "actividad":      {"name": "Actividad Clínica",  "icon": "👨‍⚕️"},
+    "reportes":       {"name": "Reportes",           "icon": "📊"},
+    "inventario_ti":  {"name": "Inventario TI",      "icon": "🖥️"},
+    "consultas_sql":  {"name": "consultas_sql",      "icon": "🖥️"},
 }
 
 # Orden de las pestañas
 TAB_ORDER = [
-    "home",
-    "admisiones", 
-    "facturacion",
-    "procedimientos",
-    "cirugias",
-    "ocupacion",
-    "profesionales",
-    "citas",
-    "reportes",
-    "consultas_sql"
+    "home", "admisiones", "facturacion", "procedimientos",
+    "laboratorio", "cirugias", "ocupacion", "actividad",
+    "reportes", "inventario_ti", "consultas_sql"
 ]
 
 # Colores institucionales
