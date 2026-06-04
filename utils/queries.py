@@ -1041,7 +1041,107 @@ class SIHOSQueries:
     # ========================================================================
     # OCUPACIÓN
     # ========================================================================
-    
+
+    def get_ocupacion_kpis_real(self):
+        """KPIs globales: camas reales (Activa=1, Habilita=1), ocupadas, libres, bloqueadas."""
+        return """
+        SELECT
+            COUNT(cc.CodiCama)                                        AS total_reales,
+            SUM(CASE
+                WHEN a.ConsAdmi IS NOT NULL
+                     AND a.Cerrado = 2
+                     AND a.Anulado = 2
+                     AND a.FechEgre IS NULL
+                THEN 1 ELSE 0
+            END)                                                      AS ocupadas_reales,
+            SUM(CASE
+                WHEN cc.ConsAdmi IS NULL OR cc.ConsAdmi = ''
+                THEN 1 ELSE 0
+            END)                                                      AS libres,
+            SUM(CASE
+                WHEN cc.ConsAdmi IS NOT NULL
+                     AND cc.ConsAdmi != ''
+                     AND (a.ConsAdmi IS NULL
+                          OR a.Cerrado != 2
+                          OR a.Anulado != 2
+                          OR a.FechEgre IS NOT NULL)
+                THEN 1 ELSE 0
+            END)                                                      AS bloqueadas,
+            (SELECT COUNT(*) FROM CodiCama
+             WHERE Activa = 1 AND Habilita = 0)                       AS virtuales_excluidas
+        FROM CodiCama cc
+        LEFT JOIN Admision a ON cc.ConsAdmi = a.ConsAdmi
+        WHERE cc.Activa = 1
+          AND cc.Habilita = 1
+        """
+
+    def get_ocupacion_resumen_servicios(self):
+        """Ocupación por servicio: camas reales, ocupadas, libres, bloqueadas."""
+        return """
+        SELECT
+            cc.CodiServ,
+            COUNT(cc.CodiCama)                                        AS camas_reales,
+            SUM(CASE
+                WHEN a.ConsAdmi IS NOT NULL
+                     AND a.Cerrado = 2
+                     AND a.Anulado = 2
+                     AND a.FechEgre IS NULL
+                THEN 1 ELSE 0
+            END)                                                      AS camas_ocupadas,
+            SUM(CASE
+                WHEN cc.ConsAdmi IS NULL OR cc.ConsAdmi = ''
+                THEN 1 ELSE 0
+            END)                                                      AS camas_libres,
+            SUM(CASE
+                WHEN cc.ConsAdmi IS NOT NULL
+                     AND cc.ConsAdmi != ''
+                     AND (a.ConsAdmi IS NULL
+                          OR a.Cerrado != 2
+                          OR a.Anulado != 2
+                          OR a.FechEgre IS NOT NULL)
+                THEN 1 ELSE 0
+            END)                                                      AS camas_bloqueadas
+        FROM CodiCama cc
+        LEFT JOIN Admision a ON cc.ConsAdmi = a.ConsAdmi
+        WHERE cc.Activa = 1
+          AND cc.Habilita = 1
+        GROUP BY cc.CodiServ
+        ORDER BY camas_ocupadas DESC
+        """
+
+    def get_ocupacion_detalle_camas(self):
+        """Detalle de cada cama real con su estado actual (Libre/Ocupada/Bloqueada)."""
+        return """
+        SELECT
+            cc.CodiCama,
+            cc.NombCama,
+            cc.CodiServ,
+            CASE
+                WHEN cc.ConsAdmi IS NULL OR cc.ConsAdmi = ''
+                    THEN 'Libre'
+                WHEN a.Cerrado = 2 AND a.Anulado = 2 AND a.FechEgre IS NULL
+                    THEN 'Ocupada'
+                WHEN a.Cerrado = 1
+                    THEN 'Bloqueada (bug Sinergia)'
+                WHEN a.FechEgre IS NOT NULL AND a.Cerrado = 2
+                    THEN 'Bloqueada (proceso incompleto)'
+                ELSE 'Estado desconocido'
+            END                                                       AS estado,
+            cc.ConsAdmi,
+            a.FechIngr,
+            a.FechEgre,
+            CASE
+                WHEN a.FechIngr IS NOT NULL
+                THEN DATEDIFF(CURDATE(), a.FechIngr)
+            END                                                       AS dias_ocupada,
+            a.UsuaModi                                                AS responsable
+        FROM CodiCama cc
+        LEFT JOIN Admision a ON cc.ConsAdmi = a.ConsAdmi
+        WHERE cc.Activa = 1
+          AND cc.Habilita = 1
+        ORDER BY cc.CodiServ, estado, cc.CodiCama
+        """
+
     def get_ocupacion_actual(self):
         """Ocupación actual de camas — solo admisiones activas legítimas (≤60 días sin egreso)."""
         return """

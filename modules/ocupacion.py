@@ -1,13 +1,13 @@
 """
-Módulo Ocupación - Análisis Completo en Tiempo Real
-5 opciones distribución, 5 métricas tendencias
+Módulo Ocupación — Camas reales (Activa=1, Habilita=1)
+Excluye 366 camas virtuales (Habilita=0).
 """
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
+import io
 import sys
 from pathlib import Path
 
@@ -16,248 +16,199 @@ sys.path.append(str(Path(__file__).parent.parent))
 from utils.db_connector import get_db_connector
 from utils.queries import SIHOSQueries, dataframe_to_excel
 from config.settings import COLORS, CACHE_TTL
-from components.widgets import (
-    get_fecha_rango_texto,
-    render_metric_card,
-    render_section_banner,
-    render_section_divider
-)
+from components.widgets import render_section_banner, render_section_divider
 from components.layout import render_footer
 
-def render_ocupacion():
-    """Función principal del módulo de Ocupación"""
-    
-    render_section_banner("🛏️", "Ocupación de Camas en Tiempo Real")
 
+def render_ocupacion():
+    """Función principal del módulo de Ocupación."""
+
+    render_section_banner("🛏️", "Ocupación Hospitalaria")
+    st.caption(
+        "Solo camas reales: Activa=1, Habilita=1 · "
+        "Las camas virtuales (Habilita=0) están excluidas del conteo."
+    )
     st.info(
-        "ℹ️ La ocupación muestra únicamente pacientes con admisión activa y sin egreso registrado "
-        "(≤60 días). Las admisiones con proceso incompleto o bug de sistema se analizan en "
-        "**Reportes → Camas Bloqueadas**."
+        "ℹ️ Las camas bloqueadas (admisión cerrada sin liberar o con egreso sin cerrar) "
+        "se analizan en detalle en **Reportes → Camas Bloqueadas**."
     )
 
-    @st.cache_data(ttl=300)  # Cache de 5 minutos
+    @st.cache_data(ttl=CACHE_TTL)
     def load_ocupacion_data():
         db = get_db_connector()
         queries = SIHOSQueries()
-        
         data = {}
         try:
-            data['general'] = db.execute_query(queries.get_ocupacion_general())
-            data['por_servicio'] = db.execute_query(queries.get_ocupacion_por_servicio())
-            data['historico'] = db.execute_query(queries.get_historico_ocupacion())
-            data['rotacion'] = db.execute_query(queries.get_rotacion_camas())
-            data['distribucion_tipo'] = db.execute_query(queries.get_distribucion_tipo_cama())
-            data['por_uci'] = db.execute_query(queries.get_ocupacion_por_uci())
-            
+            data['kpis']    = db.execute_query(queries.get_ocupacion_kpis_real(), {})
+            data['serv']    = db.execute_query(queries.get_ocupacion_resumen_servicios(), {})
+            data['detalle'] = db.execute_query(queries.get_ocupacion_detalle_camas(), {})
         except Exception as e:
-            st.error(f"Error cargando datos: {e}")
+            st.error(f"Error cargando datos de ocupación: {e}")
+            import traceback
+            st.code(traceback.format_exc())
             return None
-        
         return data
-    
+
     data = load_ocupacion_data()
-    
     if data is None:
-        st.error("Error al cargar datos de ocupación")
         st.stop()
-    
-    # MÉTRICAS
-    if not data['general'].empty:
-        general = data['general'].iloc[0]
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        porcentaje = general.get('Porcentaje_Ocupacion', 0) or 0
-        color_principal = COLORS['danger'] if porcentaje > 80 else COLORS['warning'] if porcentaje > 60 else COLORS['success']
-        
-        with col1:
-            render_metric_card("🏥", "TOTAL CAMAS", f"{int(general.get('Total_Camas', 0)):,}", COLORS['primary'], COLORS['secondary'])
-        
-        with col2:
-            render_metric_card("✅", "OCUPADAS", f"{int(general.get('Ocupadas', 0)):,}", color_principal, COLORS['info'])
-        
-        with col3:
-            render_metric_card("🆓", "LIBRES", f"{int(general.get('Libres', 0)):,}", COLORS['success'], COLORS['secondary'])
-        
-        with col4:
-            render_metric_card("📊", "% OCUPACIÓN", f"{porcentaje:.1f}%", color_principal, COLORS['danger'])
-    
+
+    # ── KPIs ──────────────────────────────────────────────────────────────────
+    if not data['kpis'].empty:
+        row = data['kpis'].iloc[0]
+        total_reales = int(row.get('total_reales', 0) or 0)
+        ocupadas     = int(row.get('ocupadas_reales', 0) or 0)
+        libres       = int(row.get('libres', 0) or 0)
+        bloqueadas   = int(row.get('bloqueadas', 0) or 0)
+        virtuales    = int(row.get('virtuales_excluidas', 0) or 0)
+        pct          = round(ocupadas / total_reales * 100, 1) if total_reales > 0 else 0.0
+
+        k1, k2, k3, k4, k5 = st.columns(5)
+        k1.metric("Camas reales",        f"{total_reales:,}")
+        k2.metric("Ocupadas",            f"{ocupadas:,}",
+                  delta=f"{pct}%")
+        k3.metric("Libres",              f"{libres:,}")
+        k4.metric("Bloqueadas",          f"{bloqueadas:,}",
+                  delta="ver Reportes", delta_color="inverse")
+        k5.metric("Virtuales excluidas", f"{virtuales:,}",
+                  delta="Habilita=0", delta_color="off")
+
+        # Barra de ocupación visual
+        color_barra = "#4CAF50" if pct < 70 else "#FF9800" if pct < 90 else "#F44336"
+        st.markdown(f"""
+            <div style='margin:8px 0 4px 0; font-size:13px; color:#666'>
+                Porcentaje de ocupación real
+            </div>
+            <div style='background:#E0E0E0; border-radius:8px; height:22px; width:100%'>
+                <div style='background:{color_barra}; width:{min(pct, 100)}%;
+                            height:22px; border-radius:8px; text-align:center;
+                            color:white; font-weight:bold; line-height:22px; font-size:13px'>
+                    {pct}%
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        st.markdown("")
+
     render_section_divider()
-    
-    # DISTRIBUCIÓN
+
+    # ── Gráficos ───────────────────────────────────────────────────────────────
     render_section_banner("📊", "Distribución de Ocupación")
-    
-    col_dist, col_grafica = st.columns([2, 2])
-    
-    with col_dist:
-        opcion_dist = st.radio(
-            "Ver distribución por:",
-            ["Por Servicio", "Por Tipo de Cama", "UCI vs No-UCI", "Rotación de Camas", "Estado Crítico"],
-            horizontal=True,
-            key="radio_dist_ocup"
-        )
-    
-    with col_grafica:
-        tipo_grafica_dist = st.radio(
-            "Tipo de gráfica:",
-            ["🥧 Pie Chart", "📊 Bar Horizontal", "📊 Bar Agrupadas", "☀️ Sunburst", "🌳 Treemap"],
-            horizontal=True,
-            key="radio_tipo_grafica_dist_ocup"
-        )
-    
-    datos_dict = {
-        "Por Servicio": (data['por_servicio'], 'Servicio', 'Porcentaje_Ocupacion'),
-        "Por Tipo de Cama": (data['distribucion_tipo'], 'Tipo', 'Ocupadas'),
-        "UCI vs No-UCI": (data['por_uci'], 'Tipo', 'Porcentaje_Ocupacion'),
-        "Rotación de Camas": (data['rotacion'], 'NombCama', 'Veces_Usada'),
-        "Estado Crítico": (data['por_servicio'].head(10), 'Servicio', 'Porcentaje_Ocupacion')
-    }
-    
-    datos_dist, campo_nombre, campo_valor = datos_dict[opcion_dist]
-    titulo = f"Distribución {opcion_dist}"
-    
-    if not datos_dist.empty:
-        col_graf, col_metricas = st.columns([3, 1])
-        
-        with col_graf:
-            fig_dist = None
-            
-            if "Pie" in tipo_grafica_dist:
-                fig_dist = px.pie(datos_dist, values=campo_valor, names=campo_nombre, title=titulo)
-            elif "Bar Horizontal" in tipo_grafica_dist:
-                fig_dist = px.bar(datos_dist, x=campo_valor, y=campo_nombre, orientation='h', title=titulo, color_continuous_scale='RdYlGn_r' if 'Porcentaje' in campo_valor else 'Blues')
-                fig_dist.update_layout(yaxis={'categoryorder':'total ascending'}, showlegend=False)
-            elif "Bar Agrupadas" in tipo_grafica_dist:
-                fig_dist = px.bar(datos_dist, x=campo_nombre, y=campo_valor, title=titulo)
-                fig_dist.update_layout(showlegend=False)
-            elif "Sunburst" in tipo_grafica_dist:
-                df_s = datos_dist.copy()
-                df_s['Root'] = 'Total'
-                fig_dist = px.sunburst(df_s, path=['Root', campo_nombre], values=campo_valor, title=titulo)
-            elif "Treemap" in tipo_grafica_dist:
-                fig_dist = px.treemap(datos_dist, path=[campo_nombre], values=campo_valor, title=titulo)
-            
-            if fig_dist:
-                fig_dist.update_layout(height=450)
-                st.plotly_chart(fig_dist, use_container_width=True)
-        
-        with col_metricas:
-            st.markdown("### 📊 Resumen")
-            
-            if 'Porcentaje' in campo_valor:
-                promedio = datos_dist[campo_valor].mean()
-                st.metric("Ocupación Promedio", f"{promedio:.1f}%")
-            else:
-                total = datos_dist[campo_valor].sum()
-                st.metric("Total", f"{int(total):,}")
-            
-            top_3 = datos_dist.nlargest(3, campo_valor)
-            st.markdown("#### 🏆 Top 3")
-            for idx, row in top_3.iterrows():
-                st.metric(label=str(row[campo_nombre])[:25], value=f"{row[campo_valor]:.1f}{'%' if 'Porcentaje' in campo_valor else ''}")
-        
-        # Gráfica comparativa Total vs Ocupadas por servicio
-        if opcion_dist == "Por Servicio" and not datos_dist.empty:
-            st.markdown("#### 🛏️ Camas totales vs ocupadas por servicio")
-            df_serv_comp = data['por_servicio'].copy()
-            df_serv_comp = df_serv_comp[df_serv_comp['Total_Camas'] > 0].sort_values(
-                'Ocupadas', ascending=True
-            )
-            fig_comp = go.Figure()
-            fig_comp.add_trace(go.Bar(
-                name='Libres',
-                y=df_serv_comp['Servicio'],
-                x=df_serv_comp['Total_Camas'] - df_serv_comp['Ocupadas'],
-                orientation='h',
-                marker_color=COLORS['success'],
-                opacity=0.7
-            ))
-            fig_comp.add_trace(go.Bar(
-                name='Ocupadas',
-                y=df_serv_comp['Servicio'],
-                x=df_serv_comp['Ocupadas'],
-                orientation='h',
-                marker_color=COLORS['danger'],
-                text=df_serv_comp['Porcentaje_Ocupacion'].apply(lambda x: f"{x:.0f}%"),
-                textposition='inside'
-            ))
-            fig_comp.update_layout(
-                barmode='stack',
-                height=max(350, len(df_serv_comp) * 35),
-                xaxis_title='Número de camas',
-                legend=dict(orientation='h', y=1.05),
-                hovermode='y unified'
-            )
-            st.plotly_chart(fig_comp, use_container_width=True)
+    col_a, col_b = st.columns(2)
 
-        with st.expander("📋 Ver tabla detallada"):
-            st.dataframe(datos_dist, use_container_width=True, hide_index=True)
-            csv_ocu = datos_dist.to_csv(index=False, encoding='utf-8-sig')
-            st.download_button(
-                label="📥 Descargar CSV",
-                data=csv_ocu,
-                file_name=f"ocupacion_{opcion_dist.lower().replace(' ', '_')}.csv",
-                mime="text/csv"
+    with col_a:
+        st.markdown("#### Ocupación por servicio")
+        if not data['serv'].empty:
+            df_serv_graf = data['serv'][data['serv']['camas_reales'] > 0].copy()
+            df_serv_graf['pct_ocup'] = (
+                df_serv_graf['camas_ocupadas'] / df_serv_graf['camas_reales'] * 100
+            ).round(1)
+            fig = px.bar(
+                df_serv_graf.sort_values('camas_ocupadas', ascending=True),
+                x='camas_ocupadas',
+                y='CodiServ',
+                orientation='h',
+                color='pct_ocup',
+                color_continuous_scale='RdYlGn_r',
+                range_color=[0, 100],
+                text='camas_ocupadas',
+                labels={
+                    'camas_ocupadas': 'Camas ocupadas',
+                    'CodiServ':       'Servicio',
+                    'pct_ocup':       '% Ocup.',
+                },
+                height=420,
             )
-            st.download_button(
-                label="📥 Descargar Excel",
-                data=dataframe_to_excel(datos_dist),
-                file_name=f"ocupacion_{opcion_dist.lower().replace(' ', '_')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            fig.update_layout(
+                coloraxis_colorbar=dict(title='% Ocup.'),
+                yaxis=dict(autorange='reversed'),
             )
-    else:
-        st.info(f"No hay datos para {opcion_dist}")
-    
-    render_section_divider()
-    
-    # TENDENCIAS
+            fig.update_traces(textposition='outside')
+            st.plotly_chart(fig, use_container_width=True)
 
-    render_section_banner("📈", "Histórico de Ocupación (Ultimos 7 días)")
-    
-    if not data['historico'].empty:
-        fig_historico = go.Figure()
-        
-        fig_historico.add_trace(go.Scatter(
-            x=data['historico']['Fecha'],
-            y=data['historico']['Porcentaje_Ocupacion'],
-            mode='lines+markers',
-            name='% Ocupación',
-            line=dict(color=COLORS['primary'], width=3),
-            marker=dict(size=10),
-            fill='tozeroy'
+    with col_b:
+        st.markdown("#### Distribución de estado de camas")
+        if not data['detalle'].empty:
+            estado_cnt = data['detalle']['estado'].value_counts().reset_index()
+            estado_cnt.columns = ['Estado', 'Cantidad']
+            colores_estado = {
+                'Libre':                         '#4CAF50',
+                'Ocupada':                       '#2196F3',
+                'Bloqueada (bug Sinergia)':       '#F44336',
+                'Bloqueada (proceso incompleto)': '#FF9800',
+                'Estado desconocido':             '#9E9E9E',
+            }
+            fig2 = px.pie(
+                estado_cnt,
+                names='Estado',
+                values='Cantidad',
+                color='Estado',
+                color_discrete_map=colores_estado,
+                hole=0.45,
+            )
+            fig2.update_traces(textinfo='percent+label')
+            fig2.update_layout(
+                showlegend=True,
+                height=420,
+                margin=dict(t=10, b=10, l=10, r=10),
+            )
+            st.plotly_chart(fig2, use_container_width=True)
+
+    # Gráfico apilado Libre / Ocupada / Bloqueada por servicio
+    if not data['serv'].empty:
+        st.markdown("#### 🛏️ Estado de camas por servicio")
+        df_stack = data['serv'].copy()
+        fig_stack = go.Figure()
+        fig_stack.add_trace(go.Bar(
+            name='Ocupadas', y=df_stack['CodiServ'], x=df_stack['camas_ocupadas'],
+            orientation='h', marker_color='#2196F3',
         ))
-        
-        fig_historico.add_hline(y=90, line_dash="dash", line_color="red", annotation_text="Crítico (90%)")
-        fig_historico.add_hline(y=70, line_dash="dash", line_color="orange", annotation_text="Alerta (70%)")
-        
-        fig_historico.update_layout(
-            title="Evolución del Porcentaje de Ocupación",
-            xaxis_title="Fecha",
-            yaxis_title="% Ocupación",
-            hovermode='x unified',
-            height=450,
-            yaxis_range=[0, 100]
+        fig_stack.add_trace(go.Bar(
+            name='Libres', y=df_stack['CodiServ'], x=df_stack['camas_libres'],
+            orientation='h', marker_color='#4CAF50', opacity=0.8,
+        ))
+        fig_stack.add_trace(go.Bar(
+            name='Bloqueadas', y=df_stack['CodiServ'], x=df_stack['camas_bloqueadas'],
+            orientation='h', marker_color='#F44336',
+        ))
+        fig_stack.update_layout(
+            barmode='stack',
+            height=max(300, len(df_stack) * 35),
+            xaxis_title='Camas',
+            legend=dict(orientation='h', y=1.05),
+            hovermode='y unified',
         )
-        
-        st.plotly_chart(fig_historico, use_container_width=True)
-        
-        st.markdown("### 📊 Resumen del Período")
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            promedio = data['historico']['Porcentaje_Ocupacion'].mean()
-            st.metric("Ocupación Promedio", f"{promedio:.1f}%")
-        
-        with col2:
-            maximo = data['historico']['Porcentaje_Ocupacion'].max()
-            st.metric("Ocupación Máxima", f"{maximo:.1f}%")
-        
-        with col3:
-            minimo = data['historico']['Porcentaje_Ocupacion'].min()
-            st.metric("Ocupación Mínima", f"{minimo:.1f}%")
-        
-        with col4:
-            camas_prom = data['historico']['Camas_Ocupadas'].mean()
-            st.metric("Camas Ocupadas Prom.", f"{camas_prom:.0f}")
-    
+        st.plotly_chart(fig_stack, use_container_width=True)
+
+    render_section_divider()
+
+    # ── Tabla detalle ──────────────────────────────────────────────────────────
+    render_section_banner("📋", "Detalle por Cama")
+
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        servicios = ['Todos'] + sorted(data['detalle']['CodiServ'].dropna().unique().tolist())
+        serv_sel  = st.selectbox("Servicio", servicios, key="ocup_serv")
+    with col_f2:
+        estados   = ['Todos'] + sorted(data['detalle']['estado'].dropna().unique().tolist())
+        est_sel   = st.selectbox("Estado", estados, key="ocup_estado")
+
+    df_filt = data['detalle'].copy()
+    if serv_sel != 'Todos':
+        df_filt = df_filt[df_filt['CodiServ'] == serv_sel]
+    if est_sel != 'Todos':
+        df_filt = df_filt[df_filt['estado'] == est_sel]
+
+    st.caption(f"Mostrando {len(df_filt):,} de {len(data['detalle']):,} camas reales")
+    st.dataframe(df_filt, use_container_width=True, hide_index=True)
+
+    buf = io.BytesIO()
+    df_filt.to_excel(buf, index=False, engine='openpyxl')
+    buf.seek(0)
+    st.download_button(
+        "⬇️ Exportar Excel",
+        data=buf,
+        file_name=f"ocupacion_{serv_sel}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
     render_footer()

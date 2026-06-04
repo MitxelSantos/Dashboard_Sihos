@@ -16,6 +16,12 @@ def render_consultas_sql():
     # 2. INICIALIZAR SESSION STATE
     if 'query_buffer' not in st.session_state:
         st.session_state.query_buffer = query_default
+    if 'selector_sql' not in st.session_state:
+        st.session_state['selector_sql'] = ''
+    if 'query_sql' not in st.session_state:
+        st.session_state['query_sql'] = ''
+    if 'resultado_sql' not in st.session_state:
+        st.session_state['resultado_sql'] = None
 
     # 3. DICCIONARIO DE CONSULTAS
     consultas_predefinidas = {
