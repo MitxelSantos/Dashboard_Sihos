@@ -647,8 +647,10 @@ class SIHOSQueries:
             ROUND(COUNT(*) / (DATEDIFF(:fecha_fin, :fecha_inicio) + 1), 1) as Promedio_Por_Dia
         FROM HojaProc
         WHERE FechProc BETWEEN :fecha_inicio AND :fecha_fin
+          AND FechProc IS NOT NULL
+          AND FechProc != '0000-00-00'
         """
-    
+
     def get_procedimientos_por_servicio(self):
         """Procedimientos por servicio"""
         return """
@@ -658,7 +660,9 @@ class SIHOSQueries:
         FROM HojaProc hp
         LEFT JOIN CodiServ cs ON hp.CodiServ = cs.CodiServ
         WHERE hp.FechProc BETWEEN :fecha_inicio AND :fecha_fin
-            AND hp.CodiServ IS NOT NULL
+          AND hp.FechProc IS NOT NULL
+          AND hp.FechProc != '0000-00-00'
+          AND hp.CodiServ IS NOT NULL
         GROUP BY hp.CodiServ, cs.NombServ
         ORDER BY Total DESC
         """
@@ -675,8 +679,10 @@ class SIHOSQueries:
             COUNT(*) as Total
         FROM HojaProc
         WHERE FechProc BETWEEN :fecha_inicio AND :fecha_fin
+          AND FechProc IS NOT NULL
+          AND FechProc != '0000-00-00'
         GROUP BY Turno
-        ORDER BY 
+        ORDER BY
             CASE Turno
                 WHEN 'Mañana (6am-2pm)' THEN 1
                 WHEN 'Tarde (2pm-10pm)' THEN 2
@@ -696,6 +702,8 @@ class SIHOSQueries:
             COUNT(*) as Total
         FROM HojaProc
         WHERE FechProc BETWEEN :fecha_inicio AND :fecha_fin
+          AND FechProc IS NOT NULL
+          AND FechProc != '0000-00-00'
         GROUP BY ProcReal
         ORDER BY Total DESC
         """
@@ -709,8 +717,10 @@ class SIHOSQueries:
         FROM HojaProc hp
         LEFT JOIN Usuarios u ON hp.CodiProf = u.Login
         WHERE hp.FechProc BETWEEN :fecha_inicio AND :fecha_fin
-            AND hp.CodiProf IS NOT NULL
-            AND hp.CodiProf != ''
+          AND hp.FechProc IS NOT NULL
+          AND hp.FechProc != '0000-00-00'
+          AND hp.CodiProf IS NOT NULL
+          AND hp.CodiProf != ''
         GROUP BY hp.CodiProf, u.Nombre
         ORDER BY Total_Procedimientos DESC
         LIMIT 15
@@ -726,6 +736,8 @@ class SIHOSQueries:
         FROM HojaProc hp
         LEFT JOIN CodiProc cp ON hp.CodiProc = cp.CodiProc
         WHERE hp.FechProc BETWEEN :fecha_inicio AND :fecha_fin
+          AND hp.FechProc IS NOT NULL
+          AND hp.FechProc != '0000-00-00'
         GROUP BY hp.CodiProc, cp.NombProc
         ORDER BY Total DESC
         """
@@ -767,6 +779,8 @@ class SIHOSQueries:
     ) eo ON eo.ConsAdmi = hp.ConsAdmi
     LEFT JOIN CodiServ cs ON cs.CodiServ = hp.CodiServ
     WHERE hp.FechProc BETWEEN :fecha_inicio AND :fecha_fin
+      AND hp.FechProc IS NOT NULL
+      AND hp.FechProc != '0000-00-00'
       AND hp.ProcReal = 1
       AND DATEDIFF(hp.FechProc, eo.Fecha) >= 0
       AND DATEDIFF(hp.FechProc, eo.Fecha) <= 30
@@ -1221,11 +1235,13 @@ class SIHOSQueries:
                 UNION SELECT CURDATE()
             ) fechas
             CROSS JOIN CodiCama c
-            LEFT JOIN Admision a ON c.ConsAdmi = a.ConsAdmi 
+            LEFT JOIN Admision a ON c.ConsAdmi = a.ConsAdmi
                 AND a.FechIngr <= fechas.Fecha
                 AND (NULLIF(a.FechEgre, '0000-00-00') >= fechas.Fecha OR NULLIF(a.FechEgre, '0000-00-00') IS NULL)
                 AND a.Cerrado = 2
+                AND a.Anulado = 2
             WHERE c.Activa = 1
+              AND c.Habilita = 1
             GROUP BY fechas.Fecha
         ) datos
         ORDER BY Fecha
@@ -1733,6 +1749,7 @@ class SIHOSQueries:
       AND a.TipoAten = 3
       AND a.Anulado  = 2
       AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) >= 0
+      AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) < 1440
     """
 
     def get_373_por_triage(self):
@@ -1763,6 +1780,7 @@ class SIHOSQueries:
       AND a.TipoAten = 3
       AND a.Anulado  = 2
       AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) >= 0
+      AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) < 1440
     GROUP BY t.ClasTria
     ORDER BY t.ClasTria
     """
@@ -1783,6 +1801,7 @@ class SIHOSQueries:
       AND a.CausExte IS NOT NULL
       AND a.CausExte != ''
       AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) >= 0
+      AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) < 1440
     GROUP BY a.CausExte, ce.NombMoti
     ORDER BY Total DESC
     LIMIT 10
@@ -1803,6 +1822,7 @@ class SIHOSQueries:
       AND a.TipoAten = 3
       AND a.Anulado  = 2
       AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) >= 0
+      AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) < 1440
     GROUP BY a.CodiServ, cs.NombServ
     ORDER BY PromEsperaMin DESC
     """
@@ -1820,6 +1840,7 @@ class SIHOSQueries:
       AND a.TipoAten = 3
       AND a.Anulado  = 2
       AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) >= 0
+      AND TIMESTAMPDIFF(MINUTE, a.HoraIngr, t.HoraTria) < 1440
     GROUP BY a.FechIngr
     ORDER BY Fecha
     """
@@ -2064,7 +2085,99 @@ class SIHOSQueries:
         LIMIT {int(limit)}
         """
 
+    # ─── CIERRE DE ADMISIONES POR ÁREA ─────────────────────────────────────────
+    def get_admisiones_sin_cerrar_por_area(self):
+        """Vista 1: TODAS las admisiones sin cerrar, agrupadas por servicio actual."""
+        return """
+        SELECT
+            a.CodiServ,
+            COALESCE(cs.NombServ, CONCAT('Servicio ', a.CodiServ)) AS servicio,
+            COUNT(*)                                    AS total_admisiones,
+            AVG(DATEDIFF(CURDATE(), a.FechIngr))         AS dias_promedio,
+            MAX(DATEDIFF(CURDATE(), a.FechIngr))         AS dias_max,
+            SUM(CASE WHEN DATEDIFF(CURDATE(), a.FechIngr) <= 2
+                     THEN 1 ELSE 0 END)                   AS posibles_activas,
+            SUM(CASE WHEN DATEDIFF(CURDATE(), a.FechIngr) > 30
+                     THEN 1 ELSE 0 END)                   AS criticas_30dias
+        FROM Admision a
+        LEFT JOIN CodiServ cs ON a.CodiServ = cs.CodiServ
+        WHERE a.Cerrado = 2
+          AND a.Anulado = 2
+          AND a.FechEgre IS NULL
+        GROUP BY a.CodiServ, cs.NombServ
+        ORDER BY total_admisiones DESC
+        """
+
+    def get_admisiones_sin_cerrar_con_cama_por_area(self):
+        """Vista 2: SOLO admisiones sin cerrar que ocupan una cama REAL actualmente."""
+        return """
+        SELECT
+            a.CodiServ,
+            COALESCE(cs.NombServ, CONCAT('Servicio ', a.CodiServ)) AS servicio,
+            COUNT(*)                                    AS camas_bloqueadas,
+            AVG(DATEDIFF(CURDATE(), a.FechIngr))         AS dias_promedio,
+            MAX(DATEDIFF(CURDATE(), a.FechIngr))         AS dias_max
+        FROM Admision a
+        LEFT JOIN CodiServ cs ON a.CodiServ = cs.CodiServ
+        JOIN CodiCama cc ON cc.ConsAdmi = a.ConsAdmi
+                          AND cc.Activa = 1 AND cc.Habilita = 1
+        WHERE a.Cerrado = 2
+          AND a.Anulado = 2
+          AND a.FechEgre IS NULL
+        GROUP BY a.CodiServ, cs.NombServ
+        ORDER BY camas_bloqueadas DESC
+        """
+
+    def get_admisiones_sin_cerrar_detalle_por_servicio(self, codi_serv,
+                                                         solo_con_cama: bool = False,
+                                                         limit: int = 1000):
+        """Detalle de admisiones sin cerrar de UN servicio específico, para entregar
+        al jefe de área en la reunión de cierre."""
+        join_cama = ("JOIN CodiCama cc ON cc.ConsAdmi = a.ConsAdmi AND cc.Activa=1 AND cc.Habilita=1"
+                     if solo_con_cama else
+                     "LEFT JOIN CodiCama cc ON cc.ConsAdmi = a.ConsAdmi AND cc.Activa=1 AND cc.Habilita=1")
+        return f"""
+        SELECT
+            a.ConsAdmi,
+            a.FechIngr,
+            DATEDIFF(CURDATE(), a.FechIngr)   AS dias_abierta,
+            CASE a.TipoAten
+                WHEN 1 THEN 'Consulta Externa'
+                WHEN 2 THEN 'Hospitalización'
+                WHEN 3 THEN 'Urgencias'
+                WHEN 4 THEN 'PyP'
+                ELSE CONCAT('Tipo ', a.TipoAten)
+            END                                AS tipo_atencion,
+            cc.CodiCama,
+            cc.NombCama,
+            a.UsuaDigi                        AS usuario_apertura,
+            a.UsuaModi                        AS usuario_modifico
+        FROM Admision a
+        {join_cama}
+        WHERE a.Cerrado = 2
+          AND a.Anulado = 2
+          AND a.FechEgre IS NULL
+          AND a.CodiServ = :codi_serv
+        ORDER BY dias_abierta DESC
+        LIMIT {int(limit)}
+        """
+
     # ─── CAMAS BLOQUEADAS ─────────────────────────────────────────────────────
+    def get_camas_conteo_seguimiento(self):
+        """Conteo simple para verificar avance de liberación de camas en el tiempo."""
+        return """
+        SELECT
+            SUM(CASE WHEN Activa=1 AND Habilita=1 THEN 1 ELSE 0 END) AS reales,
+            SUM(CASE WHEN Activa=1 AND Habilita=0 THEN 1 ELSE 0 END) AS virtuales,
+            SUM(CASE WHEN Activa=1 AND Habilita=1
+                          AND ConsAdmi IS NOT NULL AND ConsAdmi != ''
+                     THEN 1 ELSE 0 END)                               AS reales_con_admi,
+            SUM(CASE WHEN Activa=1 AND Habilita=0
+                          AND ConsAdmi IS NOT NULL AND ConsAdmi != ''
+                     THEN 1 ELSE 0 END)                               AS virtuales_con_admi
+        FROM CodiCama
+        """
+
     def get_camas_bug_sinergia(self):
         return """
         SELECT

@@ -387,67 +387,6 @@ def _render_resolucion_373():
         )
 
 
-def _render_auditoria_cierres(db, queries):
-    """Auditoría de admisiones con cierre tardío."""
-    import plotly.express as px
-
-    st.markdown("### 🔍 Auditoría — Admisiones con Cierre Tardío")
-    st.info(
-        "Admisiones de hospitalización cuya **fecha de egreso coincide con la fecha de modificación**, "
-        "con más de 30 días de diferencia respecto al ingreso. "
-        "Esto indica admisiones que no fueron cerradas oportunamente en el sistema. "
-        "**No representan pacientes realmente hospitalizados por ese período.**",
-        icon="⚠️"
-    )
-
-    fecha_ini = st.session_state.get('sidebar_fecha_inicio', date.today().replace(day=1))
-    fecha_fin = st.session_state.get('sidebar_fecha_fin', date.today())
-    params = {"fecha_inicio": str(fecha_ini), "fecha_fin": str(fecha_fin)}
-
-    df_audit = db.execute_query(queries.get_cierres_tardios(), params)
-
-    if not df_audit.empty:
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total casos", f"{len(df_audit):,}")
-        col2.metric("Usuarios involucrados", f"{df_audit['UsuarioCierre'].nunique():,}")
-        col3.metric("Días máx. de diferencia", f"{int(df_audit['DiasEstancia'].max()):,}")
-
-        dist_usuario = (
-            df_audit.groupby('UsuarioCierre')
-            .agg(Total=('ConsAdmi', 'count'), DiasPromedio=('DiasEstancia', 'mean'))
-            .reset_index()
-            .sort_values('Total', ascending=False)
-        )
-        dist_usuario['DiasPromedio'] = dist_usuario['DiasPromedio'].round(0)
-
-        fig = px.bar(
-            dist_usuario,
-            x='Total', y='UsuarioCierre',
-            orientation='h',
-            color='DiasPromedio',
-            color_continuous_scale='Reds',
-            title='Cierres tardíos por usuario (color = promedio de días)',
-            text='Total'
-        )
-        fig.update_traces(textposition='outside')
-        fig.update_layout(
-            height=max(300, len(dist_usuario) * 40),
-            yaxis={'categoryorder': 'total ascending'},
-            showlegend=False
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.dataframe(df_audit, use_container_width=True, hide_index=True)
-        st.download_button(
-            "📥 Descargar para auditoría CSV",
-            df_audit.to_csv(index=False, encoding='utf-8-sig'),
-            f"auditoria_cierres_tardios_{fecha_ini}_{fecha_fin}.csv",
-            mime="text/csv"
-        )
-    else:
-        st.success("✅ No se encontraron cierres tardíos en el período seleccionado.")
-
-
 def _render_admisiones_sin_cerrar(db, queries):
     """Tab Admisiones sin Cerrar."""
     import plotly.express as px
@@ -551,6 +490,92 @@ def _render_admisiones_sin_cerrar(db, queries):
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
 
+    st.divider()
+    st.markdown("### 🗂️ Agrupación por área — para reunión de cierre con jefes de servicio")
+    st.info(
+        "ℹ️ Esta vista incluye TODAS las admisiones sin cerrar por área "
+        "(ambulatorios, diagnósticos, hospitalización, etc.). Para ver únicamente "
+        "las que bloquean una cama física, ir a **Camas Bloqueadas**."
+    )
+
+    with st.spinner("Cargando agrupación por área..."):
+        try:
+            df_area = db.execute_query(queries.get_admisiones_sin_cerrar_por_area(), {})
+            area_ok = True
+        except Exception as e:
+            st.error(f"Error: {e}")
+            area_ok = False
+
+    if area_ok and not df_area.empty:
+        st.caption(f"**{int(df_area['total_admisiones'].sum()):,}** admisiones sin cerrar en {len(df_area)} áreas")
+
+        fig_area = px.bar(
+            df_area.sort_values('total_admisiones', ascending=True),
+            x='total_admisiones', y='servicio',
+            orientation='h',
+            color='criticas_30dias',
+            color_continuous_scale='Reds',
+            text='total_admisiones',
+            labels={
+                'total_admisiones': 'Admisiones sin cerrar',
+                'servicio':         'Área',
+                'criticas_30dias':  '>30 días',
+            },
+            height=600,
+        )
+        fig_area.update_layout(coloraxis_colorbar=dict(title='>30 días'))
+        fig_area.update_traces(textposition='outside')
+        st.plotly_chart(fig_area, use_container_width=True)
+
+        st.markdown("#### Seleccionar área para reunión de cierre")
+        area_sel = st.selectbox(
+            "Área a revisar",
+            options=df_area['CodiServ'].tolist(),
+            format_func=lambda x: df_area[df_area['CodiServ'] == x]['servicio'].values[0],
+            key="area_sin_cerrar"
+        )
+
+        with st.spinner("Cargando detalle del área..."):
+            try:
+                df_det_area = db.execute_query(
+                    queries.get_admisiones_sin_cerrar_detalle_por_servicio(
+                        codi_serv=area_sel, solo_con_cama=False
+                    ),
+                    {"codi_serv": area_sel}
+                )
+            except Exception as e:
+                df_det_area = pd.DataFrame()
+                st.error(f"Error: {e}")
+
+        if not df_det_area.empty:
+            nombre_area = df_area[df_area['CodiServ'] == area_sel]['servicio'].values[0]
+            st.caption(f"**{len(df_det_area):,} admisiones** en {nombre_area}")
+            st.dataframe(df_det_area, use_container_width=True, hide_index=True)
+
+            buf = io.BytesIO()
+            df_det_area.to_excel(buf, index=False, engine='openpyxl')
+            buf.seek(0)
+            st.download_button(
+                f"⬇️ Descargar lista — {nombre_area}",
+                data=buf,
+                file_name=f"cierre_admisiones_{nombre_area.replace(' ', '_')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_sin_cerrar"
+            )
+
+        with st.expander("Ver tabla resumen completa (todas las áreas)"):
+            st.dataframe(
+                df_area.rename(columns={
+                    'servicio':          'Área',
+                    'total_admisiones':  'Total',
+                    'dias_promedio':      'Días prom.',
+                    'dias_max':           'Días máx.',
+                    'posibles_activas':   'Posiblemente activas (≤2d)',
+                    'criticas_30dias':    'Críticas (>30d)',
+                }),
+                use_container_width=True, hide_index=True
+            )
+
 
 def _render_camas_bloqueadas(db, queries):
     """Tab Camas Bloqueadas."""
@@ -558,13 +583,46 @@ def _render_camas_bloqueadas(db, queries):
     import io
 
     st.subheader("🛏️ Camas Bloqueadas")
-    st.caption("Camas en CodiCama apuntando a admisiones que ya deberían estar liberadas.")
+    st.caption(
+        "Camas en CodiCama apuntando a admisiones que ya deberían estar liberadas. "
+        "Use el conteo de seguimiento para verificar avance en el tiempo."
+    )
+
+    # ── Conteo de seguimiento (reales vs virtuales) ─────────────────────────
+    with st.spinner("Cargando conteo de seguimiento..."):
+        try:
+            df_conteo = db.execute_query(queries.get_camas_conteo_seguimiento(), {})
+            conteo_ok = True
+        except Exception as e:
+            st.error(f"Error: {e}")
+            conteo_ok = False
+
+    if conteo_ok and not df_conteo.empty:
+        conteo = df_conteo.iloc[0]
+        reales             = int(conteo.get('reales', 0) or 0)
+        virtuales          = int(conteo.get('virtuales', 0) or 0)
+        reales_con_admi    = int(conteo.get('reales_con_admi', 0) or 0)
+        virtuales_con_admi = int(conteo.get('virtuales_con_admi', 0) or 0)
+
+        st.markdown("#### 📊 Conteo de seguimiento — comparar cada vez que se revise")
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Camas reales",    f"{reales:,}", help="Activa=1, Habilita=1")
+        k2.metric("Camas virtuales", f"{virtuales:,}", help="Activa=1, Habilita=0 — excluidas de ocupación real")
+        k3.metric("Reales con admisión asignada",
+                  f"{reales_con_admi:,}",
+                  delta="incluye ocupadas + bloqueadas", delta_color="off")
+        k4.metric("Virtuales con admisión asignada",
+                  f"{virtuales_con_admi:,}",
+                  delta="revisar si corresponde", delta_color="off")
+
+    st.divider()
+
     st.info(
-        "**Dos tipos de bloqueo:**\n\n"
+        "**Dos tipos de bloqueo en camas reales:**\n\n"
         "🔴 **Bug Sinergia**: admisión CERRADA o ANULADA pero `CodiCama.ConsAdmi` "
-        "no se limpió. Requiere intervención de Sinergia.\n\n"
+        "no se limpió. Liberar con `UPDATE CodiCama SET ConsAdmi=NULL`.\n\n"
         "🟠 **Proceso incompleto**: `FechEgre` registrada pero nadie ejecutó "
-        "'Cerrar Historia'. Cama físicamente vacía. Responsable: personal del servicio."
+        "'Cerrar Historia'. El funcionario del servicio debe cerrarla desde SIHOS."
     )
 
     with st.spinner("Cargando datos de camas..."):
@@ -578,16 +636,14 @@ def _render_camas_bloqueadas(db, queries):
             camas_ok = False
 
     if camas_ok:
-        k1, k2, k3 = st.columns(3)
-        k1.metric("🔴 Bug Sinergia",      len(df_bug),
-                  delta="Requiere parche técnico", delta_color="inverse")
-        k2.metric("🟠 Proceso incompleto", len(df_proc),
-                  delta="Personal debe cerrar", delta_color="inverse")
-        k3.metric("Total bloqueadas",      len(df_bug) + len(df_proc))
+        k1b, k2b, k3b = st.columns(3)
+        k1b.metric("🔴 Bug Sinergia",      len(df_bug), delta_color="inverse")
+        k2b.metric("🟠 Proceso incompleto", len(df_proc), delta_color="inverse")
+        k3b.metric("Total bloqueadas",      len(df_bug) + len(df_proc))
 
         st.divider()
 
-        st.markdown("#### Bloqueos por servicio")
+        st.markdown("#### Bloqueos por servicio (vista técnica)")
         if not df_serv.empty:
             fig_serv = px.bar(
                 df_serv.head(15),
@@ -603,7 +659,9 @@ def _render_camas_bloqueadas(db, queries):
 
         st.divider()
 
-        sub_bug, sub_proc = st.tabs(["🔴 Bug Sinergia", "🟠 Proceso Incompleto"])
+        sub_bug, sub_proc, sub_area = st.tabs([
+            "🔴 Bug Sinergia", "🟠 Proceso Incompleto", "🗂️ Por área (nombre legible)"
+        ])
 
         with sub_bug:
             st.markdown(f"**{len(df_bug)} camas** con admisión CERRADA/ANULADA sin liberar")
@@ -615,7 +673,8 @@ def _render_camas_bloqueadas(db, queries):
                 st.download_button(
                     "⬇️ Exportar Bug Sinergia", data=buf,
                     file_name="camas_bug_sinergia.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_bug"
                 )
 
         with sub_proc:
@@ -634,8 +693,73 @@ def _render_camas_bloqueadas(db, queries):
                 st.download_button(
                     "⬇️ Exportar Proceso Incompleto", data=buf2,
                     file_name="camas_proceso_incompleto.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_proc"
                 )
+
+        with sub_area:
+            st.markdown("**Camas bloqueadas agrupadas por área — para gestión con jefes de servicio**")
+            with st.spinner("Cargando agrupación por área..."):
+                try:
+                    df_cama_area = db.execute_query(queries.get_admisiones_sin_cerrar_con_cama_por_area(), {})
+                except Exception as e:
+                    df_cama_area = pd.DataFrame()
+                    st.error(f"Error: {e}")
+
+            if not df_cama_area.empty:
+                total_camas_bloq = int(df_cama_area['camas_bloqueadas'].sum())
+                st.warning(
+                    f"🚨 **{total_camas_bloq} camas reales** bloqueadas en "
+                    f"{len(df_cama_area)} áreas. Cerrar primero las de mayor volumen "
+                    "libera capacidad inmediata."
+                )
+
+                fig_cama = px.bar(
+                    df_cama_area.sort_values('camas_bloqueadas', ascending=True),
+                    x='camas_bloqueadas', y='servicio', orientation='h',
+                    color='dias_promedio', color_continuous_scale='Oranges',
+                    text='camas_bloqueadas',
+                    labels={'camas_bloqueadas': 'Camas bloqueadas', 'servicio': 'Área', 'dias_promedio': 'Días prom.'},
+                    height=420,
+                )
+                fig_cama.update_layout(coloraxis_colorbar=dict(title='Días prom.'))
+                fig_cama.update_traces(textposition='outside')
+                st.plotly_chart(fig_cama, use_container_width=True)
+
+                area_sel2 = st.selectbox(
+                    "Área a revisar (con cama bloqueada)",
+                    options=df_cama_area['CodiServ'].tolist(),
+                    format_func=lambda x: df_cama_area[df_cama_area['CodiServ'] == x]['servicio'].values[0],
+                    key="area_camas_bloqueadas"
+                )
+
+                with st.spinner("Cargando detalle..."):
+                    try:
+                        df_det_cama = db.execute_query(
+                            queries.get_admisiones_sin_cerrar_detalle_por_servicio(
+                                codi_serv=area_sel2, solo_con_cama=True
+                            ),
+                            {"codi_serv": area_sel2}
+                        )
+                    except Exception as e:
+                        df_det_cama = pd.DataFrame()
+                        st.error(f"Error: {e}")
+
+                if not df_det_cama.empty:
+                    nombre_area2 = df_cama_area[df_cama_area['CodiServ'] == area_sel2]['servicio'].values[0]
+                    st.caption(f"**{len(df_det_cama):,} camas bloqueadas** en {nombre_area2} — ordenadas por antigüedad")
+                    st.dataframe(df_det_cama, use_container_width=True, hide_index=True)
+
+                    buf3 = io.BytesIO()
+                    df_det_cama.to_excel(buf3, index=False, engine='openpyxl')
+                    buf3.seek(0)
+                    st.download_button(
+                        f"⬇️ Descargar prioritaria — {nombre_area2}",
+                        data=buf3,
+                        file_name=f"cierre_prioritario_{nombre_area2.replace(' ', '_')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="dl_area_cama"
+                    )
 
 
 def _render_usuarios_sihos(db, queries):
@@ -952,16 +1076,14 @@ def render_reportes():
     db = get_db_connector()
     queries = SIHOSQueries()
 
-    (tab_rda, tab_373, tab_cierres, tab_sin_cerrar,
-     tab_camas, tab_usuarios, tab_rips, tab_373exp, tab_sismed) = st.tabs([
+    (tab_rda, tab_373, tab_sin_cerrar,
+     tab_camas, tab_usuarios, tab_rips, tab_sismed) = st.tabs([
         "🔗 Interoperabilidad RDA",
         "🚨 Resolución 373",
-        "🔍 Auditoría Cierres",
         "📂 Admisiones sin Cerrar",
         "🛏️ Camas Bloqueadas",
         "👥 Usuarios SIHOS",
         "📄 RIPS",
-        "📋 Res. 373 (export)",
         "🚀 SISMED",
     ])
 
@@ -970,9 +1092,6 @@ def render_reportes():
 
     with tab_373:
         _render_resolucion_373()
-
-    with tab_cierres:
-        _render_auditoria_cierres(db, queries)
 
     with tab_sin_cerrar:
         _render_admisiones_sin_cerrar(db, queries)
@@ -985,9 +1104,6 @@ def render_reportes():
 
     with tab_rips:
         st.info("📄 **RIPS** — Próximamente disponible")
-
-    with tab_373exp:
-        st.info("📋 **Resolución 373 (exportación)** — Próximamente disponible")
 
     with tab_sismed:
         _render_sismed(db, queries)

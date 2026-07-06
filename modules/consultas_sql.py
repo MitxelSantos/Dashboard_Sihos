@@ -56,17 +56,30 @@ ORDER BY aq.HoraInic ASC
         """,
 
         "Estado Real de Camas (Ocupación)": """
-SELECT 
-    COALESCE(cs.NombServ, c.CodiServ) as Servicio, 
-    COUNT(*) as Total_Camas, 
-    SUM(CASE WHEN c.ConsAdmi <> '' AND c.ConsAdmi IS NOT NULL THEN 1 ELSE 0 END) as Ocupadas, 
-    SUM(CASE WHEN c.ConsAdmi = '' OR c.ConsAdmi IS NULL THEN 1 ELSE 0 END) as Disponibles,
-    ROUND((SUM(CASE WHEN c.ConsAdmi <> '' AND c.ConsAdmi IS NOT NULL THEN 1 ELSE 0 END) / COUNT(*)) * 100, 1) as Porcentaje
-FROM CodiCama c 
-LEFT JOIN CodiServ cs ON c.CodiServ = cs.CodiServ 
-WHERE c.Activa = 1 
-GROUP BY c.CodiServ, cs.NombServ 
-ORDER BY Porcentaje DESC
+SELECT
+    COALESCE(cs.NombServ, c.CodiServ) AS Servicio,
+    COUNT(c.CodiCama)                  AS Total_Camas,
+    SUM(CASE WHEN a.ConsAdmi IS NOT NULL
+                  AND a.Cerrado = 2 AND a.Anulado = 2
+                  AND a.FechEgre IS NULL
+             THEN 1 ELSE 0 END)        AS Ocupadas,
+    SUM(CASE WHEN c.ConsAdmi IS NULL OR c.ConsAdmi = ''
+             THEN 1 ELSE 0 END)        AS Libres,
+    SUM(CASE WHEN c.ConsAdmi IS NOT NULL AND c.ConsAdmi != ''
+                  AND (a.ConsAdmi IS NULL OR a.Cerrado != 2
+                       OR a.Anulado != 2 OR a.FechEgre IS NOT NULL)
+             THEN 1 ELSE 0 END)        AS Bloqueadas,
+    ROUND(SUM(CASE WHEN a.ConsAdmi IS NOT NULL
+                        AND a.Cerrado = 2 AND a.Anulado = 2
+                        AND a.FechEgre IS NULL
+                   THEN 1 ELSE 0 END) / COUNT(c.CodiCama) * 100, 1) AS Porcentaje_Ocup
+FROM CodiCama c
+LEFT JOIN CodiServ cs ON c.CodiServ = cs.CodiServ
+LEFT JOIN Admision a  ON c.ConsAdmi = a.ConsAdmi
+WHERE c.Activa = 1
+  AND c.Habilita = 1
+GROUP BY c.CodiServ, cs.NombServ
+ORDER BY Ocupadas DESC
         """,
 
         "Medicamentos Administrados (Últimas 24h)": """
