@@ -82,30 +82,35 @@ def render_citas():
                 "📅", "TOTAL CITAS",
                 f"{int(stats.get('Total_Citas', 0)):,}",
                 COLORS["primary"], COLORS["secondary"],
+                help_text="Citas con EstaCita entre 1 y 7 (códigos internos 8-95 excluidos) en el rango."
             )
         with col2:
             render_metric_card(
                 "✅", "CUMPLIDAS",
                 f"{int(stats.get('Cumplidas', 0)):,}",
                 COLORS["success"], COLORS["info"],
+                help_text="EstaCita=3 — el paciente asistió y la cita se completó."
             )
         with col3:
             render_metric_card(
                 "📋", "OCUPADAS",
                 f"{int(stats.get('Ocupadas', 0)):,}",
                 COLORS["info"], COLORS["primary"],
+                help_text="EstaCita=2 — cita agendada, aún pendiente de realizarse."
             )
         with col4:
             render_metric_card(
                 "⚠️", "INCUMPLIDAS",
                 f"{int(stats.get('Incumplidas', 0)):,}",
                 COLORS["warning"], COLORS["danger"],
+                help_text="EstaCita en (4, 5, 7) — el paciente no se presentó o la cita no se completó."
             )
         with col5:
             render_metric_card(
                 "❌", "CANCELADAS",
                 f"{int(stats.get('Canceladas', 0)):,}",
                 COLORS["danger"], COLORS["warning"],
+                help_text="EstaCita=6 — cita cancelada antes de la fecha programada."
             )
 
     render_section_divider()
@@ -197,7 +202,6 @@ def render_citas():
     # --- KPI 1: Espera desde solicitud ---
     with col_kpi1:
         st.markdown("### KPI 1 — Espera desde Solicitud")
-        st.caption("Días entre `FechSoli` y `FechCita`. Filtro: FechSoli en el rango.")
 
         if not data["espera_solicitud"].empty:
             esp_sol = data["espera_solicitud"].iloc[0]
@@ -214,8 +218,10 @@ def render_citas():
                 "📬", "DÍAS PROMEDIO (SOLICITUD)",
                 f"{float(dias_sol):.1f} días",
                 color_sol, COLORS["secondary"],
+                help_text="Días entre FechSoli (solicitud) y FechCita. Filtro: FechSoli en el rango seleccionado."
             )
-            st.metric("Citas en muestra", f"{total_sol:,}")
+            st.metric("Citas en muestra", f"{total_sol:,}",
+                      help="Citas usadas para calcular el promedio de este KPI.")
             st.warning(
                 "⚠️ Valor (~2.5 días) difiere del reporte SIHOS nativo (29.66 días). "
                 "**Pendiente validación con proveedor Sinergia.**"
@@ -226,7 +232,6 @@ def render_citas():
     # --- KPI 2: Espera desde asignación ---
     with col_kpi2:
         st.markdown("### KPI 2 — Espera desde Asignación ✅")
-        st.caption("Días entre `FechAsig` y `FechCita`. Filtro: FechCita en el rango.")
 
         if not data["espera_asignacion"].empty:
             esp_asi = data["espera_asignacion"].iloc[0]
@@ -243,8 +248,10 @@ def render_citas():
                 "📆", "DÍAS PROMEDIO (ASIGNACIÓN)",
                 f"{float(dias_asi):.1f} días",
                 color_asi, COLORS["secondary"],
+                help_text="Días entre FechAsig (asignación) y FechCita. Filtro: FechCita en el rango seleccionado."
             )
-            st.metric("Citas en muestra", f"{total_asi:,}")
+            st.metric("Citas en muestra", f"{total_asi:,}",
+                      help="Citas usadas para calcular el promedio de este KPI.")
             st.success(
                 "✅ Valor esperado ~8.7 días — validado contra SIHOS nativo (7.92 días)."
             )

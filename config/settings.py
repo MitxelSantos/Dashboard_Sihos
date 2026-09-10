@@ -17,15 +17,19 @@ TABS_CONFIG = {
     "cirugias":       {"name": "Cirugías",           "icon": "⚕️"},
     "ocupacion":      {"name": "Ocupación",          "icon": "🛏️"},
     "actividad":      {"name": "Actividad Clínica",  "icon": "👨‍⚕️"},
+    "profesionales":  {"name": "Profesionales (comparar)", "icon": "🧩"},
+    "citas":          {"name": "Citas (comparar)",         "icon": "🧩"},
     "reportes":       {"name": "Reportes",           "icon": "📊"},
     "inventario_ti":  {"name": "Inventario TI",      "icon": "🖥️"},
     "consultas_sql":  {"name": "consultas_sql",      "icon": "🖥️"},
+
 }
 
 # Orden de las pestañas
 TAB_ORDER = [
     "home", "admisiones", "facturacion", "procedimientos",
     "laboratorio", "cirugias", "ocupacion", "actividad",
+    "profesionales", "citas",  # TEMPORAL: reconectadas solo para comparar contra "actividad" — ver README/decisión pendiente
     "reportes", "inventario_ti", "consultas_sql"
 ]
 
@@ -35,6 +39,7 @@ COLORS = {
     'secondary': '#77BD47',    # Verde claro institucional
     'success': '#16A01C',      # Verde oscuro institucional
     'info': '#2196F3',         # Azul información
+    
     'warning': '#FF9800',      # Naranja advertencia
     'danger': '#F44336',       # Rojo peligro
     'light': '#F5F5F5',        # Gris claro

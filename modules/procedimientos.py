@@ -127,32 +127,36 @@ def render_procedimientos():
         
         with col1:
             render_metric_card(
-                "🔬", 
-                "TOTAL PROCEDIMIENTOS", 
-                f"{int(stats.get('Total_Procedimientos', 0)):,}", 
-                COLORS['primary'], 
-                COLORS['secondary'])
-        
+                "🔬",
+                "TOTAL PROCEDIMIENTOS",
+                f"{int(stats.get('Total_Procedimientos', 0)):,}",
+                COLORS['primary'],
+                COLORS['secondary'],
+                help_text="Registros de HojaProc con fecha en el rango seleccionado.")
+
         with col2:
             render_metric_card(
-                "🏥", 
-                "SERVICIOS ACTIVOS", f"{int(stats.get('Servicios_Activos', 0)):,}", 
-                COLORS['info'], 
-                COLORS['primary'])
-        
+                "🏥",
+                "SERVICIOS ACTIVOS", f"{int(stats.get('Servicios_Activos', 0)):,}",
+                COLORS['info'],
+                COLORS['primary'],
+                help_text="Servicios (CodiServ) distintos con al menos un procedimiento en el período.")
+
         with col3:
             render_metric_card(
-                "👥", 
-                "PACIENTES", 
-                f"{int(stats.get('Pacientes_Atendidos', 0)):,}", 
-                COLORS['success'], COLORS['info'])
-        
+                "👥",
+                "PACIENTES",
+                f"{int(stats.get('Pacientes_Atendidos', 0)):,}",
+                COLORS['success'], COLORS['info'],
+                help_text="Admisiones (ConsAdmi) distintas con al menos un procedimiento en el período.")
+
         with col4:
             promedio = stats.get('Promedio_Por_Dia', 0) or 0
             render_metric_card(
-                "📊", "PROMEDIO/DÍA", 
-                f"{promedio:.1f}", 
-                COLORS['warning'], COLORS['danger'])
+                "📊", "PROMEDIO/DÍA",
+                f"{promedio:.1f}",
+                COLORS['warning'], COLORS['danger'],
+                help_text="Total Procedimientos / número de días del rango seleccionado.")
     
     render_section_divider()
     

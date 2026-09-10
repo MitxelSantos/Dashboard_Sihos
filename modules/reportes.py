@@ -77,14 +77,19 @@ def _render_rda_interoperabilidad():
         rechazados = int(row.get("Rechazados", 0) or 0)
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("📦 Total RDA",    f"{total:,}")
-        c2.metric("🟢 Enviados",    f"{enviados:,}",
-                  delta=f"{enviados / total * 100:.1f}%")
-        c3.metric("🟡 Pendientes",  f"{pendientes:,}",
-                  delta=f"{pendientes / total * 100:.1f}%")
-        c4.metric("🔴 Rechazados",  f"{rechazados:,}",
+        c1.metric("📦 Total RDA", f"{total:,}",
+                  help="Envíos RDA (Registro de interoperabilidad de datos) al Ministerio "
+                       "de Salud, tabla EnviRda, en el rango de fechas seleccionado.")
+        c2.metric("🟢 Enviados", f"{enviados:,}",
+                  delta=f"{enviados / total * 100:.1f}%",
+                  help="estado_id=56 — el Ministerio recibió y procesó el envío correctamente.")
+        c3.metric("🟡 Pendientes", f"{pendientes:,}",
+                  delta=f"{pendientes / total * 100:.1f}%",
+                  help="estado_id=57 — aún no se ha enviado o no hay respuesta del Ministerio.")
+        c4.metric("🔴 Rechazados", f"{rechazados:,}",
                   delta=f"{rechazados / total * 100:.1f}%",
-                  delta_color="inverse")
+                  delta_color="inverse",
+                  help="estado_id=58 — el Ministerio devolvió un error (ver detalle por admisión abajo).")
 
     render_section_divider()
 
@@ -231,12 +236,17 @@ def _render_resolucion_373():
     pct_ok   = round(dentro / total * 100, 1) if total else 0
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("🚨 Total urgencias",     f"{total:,}")
-    col2.metric("⏱️ Espera promedio",     f"{prom_esp:.1f} min")
+    col1.metric("🚨 Total urgencias", f"{total:,}",
+                help="Admisiones de Urgencias (TipoAten=3) con triage registrado en el período.")
+    col2.metric("⏱️ Espera promedio", f"{prom_esp:.1f} min",
+                help="Minutos promedio entre el ingreso (HoraIngr) y la clasificación de triage (HoraTria).")
     col3.metric("✅ Dentro del estándar", f"{dentro:,}",
-                delta=f"{pct_ok}%")
-    col4.metric("❌ Fuera del estándar",  f"{fuera:,}",
-                delta=f"{100-pct_ok:.1f}%", delta_color="inverse")
+                delta=f"{pct_ok}%",
+                help="Casos clasificados dentro del tiempo máximo de espera según su nivel de triage "
+                     "(Res. 3678/2023): Reanimación 0 min, Emergencia 30 min, Urgencia 60 min, etc.")
+    col4.metric("❌ Fuera del estándar", f"{fuera:,}",
+                delta=f"{100-pct_ok:.1f}%", delta_color="inverse",
+                help="Casos que superaron el tiempo máximo de espera permitido para su nivel de triage.")
 
     render_section_divider()
 
@@ -393,16 +403,7 @@ def _render_admisiones_sin_cerrar(db, queries):
     import io
 
     st.subheader("📂 Admisiones sin Cerrar")
-    st.caption(
-        "Admisiones con Cerrado=2, Anulado=2 y FechEgre IS NULL — "
-        "el sistema las considera activas pero muchas corresponden a "
-        "atenciones finalizadas no cerradas formalmente."
-    )
-    st.warning(
-        "⚠️ **Total estimado: ~21,554 admisiones sin cerrar** (dato de auditoría mayo 2026). "
-        "Solo 605 son de hoy o ayer — el 87% llevan más de 30 días. "
-        "Las ambulatorias (TipoAten=1,4) no bloquean camas pero afectan RIPS y estadísticas."
-    )
+    st.caption("Las ambulatorias (TipoAten=1,4) no bloquean camas pero afectan RIPS y estadísticas.")
 
     with st.spinner("Cargando distribución..."):
         try:
@@ -418,11 +419,25 @@ def _render_admisiones_sin_cerrar(db, queries):
         sospechosas = total_asc - legitimas
 
         k1, k2, k3 = st.columns(3)
-        k1.metric("Total sin cerrar",      f"{total_asc:,}")
-        k2.metric("Posiblemente activas",  f"{legitimas:,}",
-                  delta="≤2 días", delta_color="normal")
-        k3.metric("Probables errores",     f"{sospechosas:,}",
-                  delta=">2 días", delta_color="inverse")
+        k1.metric(
+            "Total sin cerrar", f"{total_asc:,}",
+            help="Admisiones con Cerrado=2, Anulado=2 y FechEgre IS NULL: SIHOS las "
+                 "considera activas, pero muchas corresponden a atenciones ya "
+                 "finalizadas que nadie cerró formalmente en el sistema."
+        )
+        k2.metric(
+            "Posiblemente activas", f"{legitimas:,}",
+            delta="≤2 días", delta_color="normal",
+            help="Ingresaron hoy o ayer. Es razonable asumir que el paciente "
+                 "todavía sigue en atención y por eso la historia no se ha cerrado."
+        )
+        k3.metric(
+            "Probables errores", f"{sospechosas:,}",
+            delta=">2 días", delta_color="inverse",
+            help="Llevan 3 días o más sin cerrarse. Es poco probable que una "
+                 "atención legítima quede tanto tiempo abierta — casi siempre es "
+                 "un olvido de cierre de historia clínica, no un paciente activo."
+        )
 
         st.divider()
 
@@ -606,24 +621,20 @@ def _render_camas_bloqueadas(db, queries):
 
         st.markdown("#### 📊 Conteo de seguimiento — comparar cada vez que se revise")
         k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Camas reales",    f"{reales:,}", help="Activa=1, Habilita=1")
-        k2.metric("Camas virtuales", f"{virtuales:,}", help="Activa=1, Habilita=0 — excluidas de ocupación real")
+        k1.metric("Camas reales",    f"{reales:,}", help="Activa=1, Habilita=1 — camas físicas en uso normal.")
+        k2.metric("Camas virtuales", f"{virtuales:,}", help="Activa=1, Habilita=0 — excluidas de ocupación real.")
         k3.metric("Reales con admisión asignada",
                   f"{reales_con_admi:,}",
-                  delta="incluye ocupadas + bloqueadas", delta_color="off")
+                  delta="incluye ocupadas + bloqueadas", delta_color="off",
+                  help="CodiCama.ConsAdmi no nulo en camas reales. Incluye tanto ocupación "
+                       "legítima como camas bloqueadas por admisiones que ya deberían liberarse.")
         k4.metric("Virtuales con admisión asignada",
                   f"{virtuales_con_admi:,}",
-                  delta="revisar si corresponde", delta_color="off")
+                  delta="revisar si corresponde", delta_color="off",
+                  help="Camas virtuales (Habilita=0) que aún tienen una admisión asignada — "
+                       "no deberían influir en ocupación, pero conviene revisar por qué la tienen.")
 
     st.divider()
-
-    st.info(
-        "**Dos tipos de bloqueo en camas reales:**\n\n"
-        "🔴 **Bug Sinergia**: admisión CERRADA o ANULADA pero `CodiCama.ConsAdmi` "
-        "no se limpió. Liberar con `UPDATE CodiCama SET ConsAdmi=NULL`.\n\n"
-        "🟠 **Proceso incompleto**: `FechEgre` registrada pero nadie ejecutó "
-        "'Cerrar Historia'. El funcionario del servicio debe cerrarla desde SIHOS."
-    )
 
     with st.spinner("Cargando datos de camas..."):
         try:
@@ -637,9 +648,15 @@ def _render_camas_bloqueadas(db, queries):
 
     if camas_ok:
         k1b, k2b, k3b = st.columns(3)
-        k1b.metric("🔴 Bug Sinergia",      len(df_bug), delta_color="inverse")
-        k2b.metric("🟠 Proceso incompleto", len(df_proc), delta_color="inverse")
-        k3b.metric("Total bloqueadas",      len(df_bug) + len(df_proc))
+        k1b.metric("🔴 Bug Sinergia", len(df_bug), delta_color="inverse",
+                   help="Admisión CERRADA o ANULADA pero CodiCama.ConsAdmi no se limpió. "
+                        "Se libera con UPDATE CodiCama SET ConsAdmi=NULL.")
+        k2b.metric("🟠 Proceso incompleto", len(df_proc), delta_color="inverse",
+                   help="FechEgre ya está registrada pero nadie ejecutó 'Cerrar Historia' en "
+                        "SIHOS. El funcionario del servicio debe cerrarla manualmente.")
+        k3b.metric("Total bloqueadas", len(df_bug) + len(df_proc),
+                   help="Suma de camas reales inmovilizadas por ambos tipos de bloqueo — "
+                        "capacidad que no está realmente ocupada pero tampoco aparece libre.")
 
         st.divider()
 
@@ -787,14 +804,20 @@ def _render_usuarios_sihos(db, queries):
         sin_registro = df_uniq['registro_prof'].isna().sum()
 
         k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Total usuarios",        f"{total_usr:,}")
-        k2.metric("Activos",               f"{activos:,}")
-        k3.metric("Sin firma digital",     f"{sin_firma:,}",
+        k1.metric("Total usuarios", f"{total_usr:,}",
+                  help="Usuarios únicos (Login) registrados en SIHOS, activos e inactivos.")
+        k2.metric("Activos", f"{activos:,}",
+                  help="Usuarios con Usuarios.Activo=1 — pueden iniciar sesión en SIHOS.")
+        k3.metric("Sin firma digital", f"{sin_firma:,}",
                   delta=f"{sin_firma/total_usr*100:.0f}%" if total_usr else "0%",
-                  delta_color="inverse")
-        k4.metric("Sin reg. profesional",  f"{sin_registro:,}",
+                  delta_color="inverse",
+                  help="Usuarios sin FotoFirm cargada — no pueden firmar digitalmente "
+                       "historias clínicas ni documentos que la requieran.")
+        k4.metric("Sin reg. profesional", f"{sin_registro:,}",
                   delta=f"{sin_registro/total_usr*100:.0f}%" if total_usr else "0%",
-                  delta_color="inverse")
+                  delta_color="inverse",
+                  help="Usuarios sin RegiProf (registro profesional/tarjeta profesional) "
+                       "asociado — relevante para personal asistencial.")
 
         st.divider()
 
@@ -944,10 +967,15 @@ def _render_sismed(db, queries):
         if not df_kpis.empty:
             kpis = df_kpis.iloc[0]
             k1, k2, k3, k4 = st.columns(4)
-            k1.metric("Servicios distintos", f"{int(kpis.get('items_distintos', 0) or 0):,}")
-            k2.metric("Unidades facturadas",  f"{int(kpis.get('total_unidades', 0) or 0):,}")
-            k3.metric("Valor total",          f"${float(kpis.get('valor_total', 0) or 0) / 1e9:.2f}B")
-            k4.metric("Precio promedio",      f"${float(kpis.get('precio_promedio', 0) or 0):,.0f}")
+            k1.metric("Servicios distintos", f"{int(kpis.get('items_distintos', 0) or 0):,}",
+                      help="Códigos de servicio/procedimiento (DetaFact.CodiServ) distintos "
+                           "liquidados en el período, fuente DetaFact CodiDocu='LIQ'.")
+            k2.metric("Unidades facturadas", f"{int(kpis.get('total_unidades', 0) or 0):,}",
+                      help="Suma de DetaFact.CantReal — cantidad total de unidades liquidadas.")
+            k3.metric("Valor total", f"${float(kpis.get('valor_total', 0) or 0) / 1e9:.2f}B",
+                      help="Suma de DetaFact.ValoTota en miles de millones (B = billones cortos, 1e9).")
+            k4.metric("Precio promedio", f"${float(kpis.get('precio_promedio', 0) or 0):,.0f}",
+                      help="Promedio de DetaFact.ValoUnit entre todos los ítems liquidados.")
 
         st.divider()
 

@@ -77,12 +77,18 @@ def show_inventario():
         con_ssd  = (df['Disco 1: Tipo'] == 'SSD').sum()
 
         c1, c2, c3, c4, c5, c6 = st.columns(6)
-        c1.metric("Total equipos",     total)
-        c2.metric("Óptimos",           optimos,   delta=f"{optimos/total*100:.0f}%")
-        c3.metric("Regulares",         regulares, delta=f"-{regulares}", delta_color="inverse")
-        c4.metric("Sin licencia Win",  sin_lic,   delta=f"{sin_lic/total*100:.0f}%", delta_color="inverse")
-        c5.metric("Windows 11",        win11,     delta=f"{win11/total*100:.0f}%")
-        c6.metric("Con SSD",           con_ssd,   delta=f"{con_ssd/total*100:.0f}%")
+        c1.metric("Total equipos", total,
+                  help="Filas en la hoja 'Equipos de Cómputo' del inventario Excel.")
+        c2.metric("Óptimos", optimos, delta=f"{optimos/total*100:.0f}%",
+                  help="Equipos con Estado Operativo = 'Operativo - Óptimo'.")
+        c3.metric("Regulares", regulares, delta=f"-{regulares}", delta_color="inverse",
+                  help="Equipos con Estado Operativo = 'Operativo - Regular'.")
+        c4.metric("Sin licencia Win", sin_lic, delta=f"{sin_lic/total*100:.0f}%", delta_color="inverse",
+                  help="Estado Licencia Windows en ('No activado', 'No detectado').")
+        c5.metric("Windows 11", win11, delta=f"{win11/total*100:.0f}%",
+                  help="Equipos con Sistema Operativo = 'Windows 11'.")
+        c6.metric("Con SSD", con_ssd, delta=f"{con_ssd/total*100:.0f}%",
+                  help="Equipos cuyo Disco 1: Tipo = 'SSD'.")
 
         st.divider()
         col_a, col_b, col_c = st.columns(3)
@@ -191,9 +197,12 @@ def show_inventario():
                           (df_filt['Observaciones Técnicas'].astype(str).str.strip() != '')].shape[0]
 
         ca, cb, cc = st.columns(3)
-        ca.metric("Sin IP registrada",    sin_ip)
-        cb.metric("Sin AnyDesk",          sin_any)
-        cc.metric("Con observación técnica", obs)
+        ca.metric("Sin IP registrada", sin_ip,
+                  help="Equipos (en la vista filtrada) sin valor en 'Dirección IP'.")
+        cb.metric("Sin AnyDesk", sin_any,
+                  help="Equipos sin ID AnyDesk válido — sin acceso remoto configurado.")
+        cc.metric("Con observación técnica", obs,
+                  help="Equipos con texto registrado en 'Observaciones Técnicas'.")
 
         # Descarga
         import io

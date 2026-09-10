@@ -64,19 +64,23 @@ def _render_profesionales(fecha_inicio, fecha_fin, rango_fechas):
         with col1:
             render_metric_card("👥", "PROFESIONALES ACTIVOS",
                 f"{int(s.get('Profesionales_Activos', 0)):,}",
-                COLORS['primary'], COLORS['secondary'])
+                COLORS['primary'], COLORS['secondary'],
+                help_text="Usuarios (RipsCons.UsuaCons) distintos con al menos una atención en el período.")
         with col2:
             render_metric_card("📋", "TOTAL ATENCIONES",
                 f"{int(s.get('Total_Atenciones', 0)):,}",
-                COLORS['info'], COLORS['primary'])
+                COLORS['info'], COLORS['primary'],
+                help_text="Registros de RipsCons con fecha en el rango seleccionado.")
         with col3:
             render_metric_card("✅", "REALIZADAS",
                 f"{int(s.get('Atenciones_Realizadas', 0)):,}",
-                COLORS['success'], COLORS['info'])
+                COLORS['success'], COLORS['info'],
+                help_text="EstaReal=1 — la atención quedó efectivamente registrada como realizada.")
         with col4:
             render_metric_card("⏳", "PENDIENTES",
                 f"{int(s.get('Atenciones_Pendientes', 0)):,}",
-                COLORS['warning'], COLORS['danger'])
+                COLORS['warning'], COLORS['danger'],
+                help_text="EstaReal=0 — atención registrada pero aún no marcada como realizada.")
 
     render_section_divider()
 
@@ -184,6 +188,184 @@ def _render_profesionales(fecha_inicio, fecha_fin, rango_fechas):
     else:
         st.info("No hay datos de horario de atenciones para el período seleccionado.")
 
+    render_section_divider()
+
+    # ── Producción individual por profesional ──────────────────────────────
+    render_section_banner("📋", "Producción Individual por Profesional", rango_fechas)
+
+    db = get_db_connector()
+    queries = SIHOSQueries()
+
+    col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
+
+    with col_f2:
+        prod_ini = st.date_input(
+            "Desde",
+            value=date(date.today().year, date.today().month, 1),
+            key="prod_fecha_ini"
+        )
+    with col_f3:
+        prod_fin = st.date_input(
+            "Hasta",
+            value=date.today(),
+            key="prod_fecha_fin"
+        )
+
+    with col_f1:
+        with st.spinner("Cargando profesionales..."):
+            try:
+                df_prof_lista = db.execute_query(
+                    queries.get_profesionales_lista(),
+                    {"fecha_inicio": str(prod_ini), "fecha_fin": str(prod_fin)}
+                )
+                # Corrección encoding latin1→utf-8 si aplica
+                for col in ['nombre', 'especialidad']:
+                    if col in df_prof_lista.columns:
+                        def _fix_enc(x):
+                            try:
+                                return x.encode('latin1').decode('utf-8') if isinstance(x, str) else x
+                            except Exception:
+                                return x
+                        df_prof_lista[col] = df_prof_lista[col].apply(_fix_enc)
+                prof_ok = True
+            except Exception as e:
+                st.error(f"Error cargando profesionales: {e}")
+                prof_ok = False
+
+        if prof_ok and not df_prof_lista.empty:
+            opciones = {
+                f"{row['nombre']} — {row['especialidad']}": row['login']
+                for _, row in df_prof_lista.iterrows()
+            }
+            prof_sel_label = st.selectbox(
+                "Seleccionar profesional",
+                options=list(opciones.keys()),
+                key="prof_produccion_sel"
+            )
+            prof_login = opciones[prof_sel_label]
+        else:
+            st.warning("No hay profesionales con citas en el período seleccionado.")
+            prof_login = None
+
+    if prof_login:
+        params_prod = {
+            "login":        prof_login,
+            "fecha_inicio": str(prod_ini),
+            "fecha_fin":    str(prod_fin),
+        }
+
+        with st.spinner("Cargando producción..."):
+            try:
+                df_kpis   = db.execute_query(queries.get_produccion_profesional_kpis(), params_prod)
+                df_det    = db.execute_query(queries.get_produccion_profesional_detalle(), params_prod)
+                df_tend   = db.execute_query(queries.get_produccion_profesional_tendencia(), params_prod)
+                df_fina   = db.execute_query(queries.get_produccion_profesional_finalidad(), params_prod)
+                prod_ok   = True
+            except Exception as e:
+                st.error(f"Error cargando producción: {e}")
+                prod_ok = False
+
+        if prod_ok and not df_kpis.empty:
+            row_k = df_kpis.iloc[0]
+            cumplidas      = int(row_k.get('cumplidas', 0) or 0)
+            ocupadas       = int(row_k.get('ocupadas', 0) or 0)
+            canceladas     = int(row_k.get('canceladas', 0) or 0)
+            inasistencias  = int(row_k.get('inasistencias', 0) or 0)
+            no_atendidas   = int(row_k.get('no_atendidas', 0) or 0)
+            total          = int(row_k.get('total', 0) or 0)
+            duracion_prom  = round(float(row_k.get('duracion_prom_min') or 0), 1)
+            tasa           = round(cumplidas / total * 100, 1) if total > 0 else 0.0
+
+            # KPIs
+            st.markdown(f"#### {prof_sel_label.split(' — ')[0]}")
+            k1, k2, k3, k4, k5, k6 = st.columns(6)
+            k1.metric("✅ Cumplidas", f"{cumplidas:,}",
+                      help="EstaCita=3 — citas de este profesional que se completaron.")
+            k2.metric("📅 Pendientes", f"{ocupadas:,}",
+                      help="EstaCita=2 (Ocupada) — citas agendadas aún por realizarse.")
+            k3.metric("❌ Canceladas", f"{canceladas:,}",
+                      help="EstaCita=6 — citas canceladas antes de la fecha programada.")
+            k4.metric("🚫 Inasistencias", f"{inasistencias:,}",
+                      help="EstaCita=4 (Incumplida - Paciente) — el paciente no se presentó a la cita.")
+            k5.metric("⚠️ No atendidas", f"{no_atendidas:,}",
+                      help="EstaCita=5 o 7 (Incumplida - Médico / Incumplida - Sistema) — "
+                           "la cita no se realizó por causa del profesional o del sistema, no del paciente.")
+            k6.metric("📊 % Cumplimiento", f"{tasa}%",
+                      delta=f"Prom. {duracion_prom} min/cita",
+                      help="Cumplidas / Total de citas del profesional en el período.")
+
+            st.divider()
+
+            col_tend, col_fina = st.columns([3, 1])
+
+            with col_tend:
+                st.markdown("#### Tendencia diaria")
+                if not df_tend.empty:
+                    fig_tend = go.Figure()
+                    fig_tend.add_trace(go.Bar(
+                        x=df_tend['fecha'], y=df_tend['cumplidas'],
+                        name='Cumplidas', marker_color='#4CAF50'
+                    ))
+                    fig_tend.add_trace(go.Bar(
+                        x=df_tend['fecha'], y=df_tend['no_cumplidas'],
+                        name='Canceladas/Inasist./No atend.', marker_color='#F44336'
+                    ))
+                    fig_tend.add_trace(go.Bar(
+                        x=df_tend['fecha'], y=df_tend['pendientes'],
+                        name='Pendientes', marker_color='#2196F3'
+                    ))
+                    fig_tend.update_layout(
+                        barmode='stack', height=320,
+                        legend=dict(orientation='h', yanchor='bottom', y=1.02),
+                        xaxis_title='', yaxis_title='Citas',
+                        margin=dict(t=40, b=10)
+                    )
+                    st.plotly_chart(fig_tend, use_container_width=True)
+                else:
+                    st.info("Sin datos de tendencia para el período.")
+
+            with col_fina:
+                st.markdown("#### Por finalidad")
+                if not df_fina.empty:
+                    fig_fina = px.pie(
+                        df_fina, names='finalidad', values='total',
+                        hole=0.45, height=320,
+                        color_discrete_sequence=px.colors.qualitative.Set2
+                    )
+                    fig_fina.update_traces(textinfo='percent+label')
+                    fig_fina.update_layout(
+                        showlegend=False,
+                        margin=dict(t=40, b=10, l=10, r=10)
+                    )
+                    st.plotly_chart(fig_fina, use_container_width=True)
+                else:
+                    st.info("Sin citas cumplidas.")
+
+            st.divider()
+
+            # Tabla detalle
+            st.markdown("#### Detalle de citas")
+            estados_disp = ['Todos'] + sorted(df_det['estado'].dropna().unique().tolist())
+            estado_filtro = st.selectbox("Filtrar por estado", estados_disp,
+                                         key="prod_estado_filtro")
+            df_det_filt = df_det if estado_filtro == 'Todos' \
+                          else df_det[df_det['estado'] == estado_filtro]
+
+            st.caption(f"{len(df_det_filt):,} registros")
+            st.dataframe(df_det_filt, use_container_width=True, hide_index=True)
+
+            import io as _io
+            buf = _io.BytesIO()
+            df_det_filt.to_excel(buf, index=False, engine='openpyxl')
+            buf.seek(0)
+            nombre_archivo = prof_sel_label.split(' — ')[0].replace(' ', '_')
+            st.download_button(
+                f"⬇️ Exportar producción — {prof_sel_label.split(' — ')[0]}",
+                data=buf,
+                file_name=f"produccion_{nombre_archivo}_{prod_ini}_{prod_fin}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
 
 def _render_citas(fecha_inicio, fecha_fin, rango_fechas):
     @st.cache_data(ttl=CACHE_TTL)
@@ -207,23 +389,28 @@ def _render_citas(fecha_inicio, fecha_fin, rango_fechas):
         with col1:
             render_metric_card("📅", "TOTAL CITAS",
                 f"{int(s.get('Total_Citas', 0)):,}",
-                COLORS['primary'], COLORS['secondary'])
+                COLORS['primary'], COLORS['secondary'],
+                help_text="Citas con EstaCita entre 1 y 7 (códigos internos 8-95 excluidos) en el rango.")
         with col2:
             render_metric_card("✅", "CUMPLIDAS",
                 f"{int(s.get('Cumplidas', 0)):,}",
-                COLORS['success'], COLORS['info'])
+                COLORS['success'], COLORS['info'],
+                help_text="EstaCita=3 — el paciente asistió y la cita se completó.")
         with col3:
             render_metric_card("📋", "OCUPADAS",
                 f"{int(s.get('Ocupadas', 0)):,}",
-                COLORS['info'], COLORS['primary'])
+                COLORS['info'], COLORS['primary'],
+                help_text="EstaCita=2 — cita agendada, aún pendiente de realizarse.")
         with col4:
             render_metric_card("⚠️", "INCUMPLIDAS",
                 f"{int(s.get('Incumplidas', 0)):,}",
-                COLORS['warning'], COLORS['danger'])
+                COLORS['warning'], COLORS['danger'],
+                help_text="EstaCita en (4, 5, 7) — el paciente no se presentó o la cita no se completó.")
         with col5:
             render_metric_card("❌", "CANCELADAS",
                 f"{int(s.get('Canceladas', 0)):,}",
-                COLORS['danger'], COLORS['warning'])
+                COLORS['danger'], COLORS['warning'],
+                help_text="EstaCita=6 — cita cancelada antes de la fecha programada.")
 
     render_section_divider()
 
@@ -264,8 +451,10 @@ def _render_citas(fecha_inicio, fecha_fin, rango_fechas):
             dias = float(esp.get('PromEsperaSolicitud') or 0)
             color = COLORS['danger'] if dias > 15 else COLORS['warning'] if dias > 7 else COLORS['success']
             render_metric_card("📬", "DÍAS PROM. (SOLICITUD)",
-                f"{dias:.1f} días", color, COLORS['secondary'])
-            st.metric("Citas en muestra", f"{int(esp.get('TotalCitas', 0)):,}")
+                f"{dias:.1f} días", color, COLORS['secondary'],
+                help_text="Días entre FechSoli (solicitud) y FechCita. Filtro: FechSoli en el rango seleccionado.")
+            st.metric("Citas en muestra", f"{int(esp.get('TotalCitas', 0)):,}",
+                      help="Citas usadas para calcular el promedio de este KPI.")
             st.warning("⚠️ Valor (~2.5 días) difiere del SIHOS nativo (29.66 días). Pendiente con Sinergia.")
 
     with col_k2:
@@ -275,6 +464,8 @@ def _render_citas(fecha_inicio, fecha_fin, rango_fechas):
             dias = float(esp.get('PromEsperaAsignacion') or 0)
             color = COLORS['danger'] if dias > 15 else COLORS['warning'] if dias > 7 else COLORS['success']
             render_metric_card("📆", "DÍAS PROM. (ASIGNACIÓN)",
-                f"{dias:.1f} días", color, COLORS['secondary'])
-            st.metric("Citas en muestra", f"{int(esp.get('TotalCitas', 0)):,}")
+                f"{dias:.1f} días", color, COLORS['secondary'],
+                help_text="Días entre FechAsig (asignación) y FechCita. Filtro: FechCita en el rango seleccionado.")
+            st.metric("Citas en muestra", f"{int(esp.get('TotalCitas', 0)):,}",
+                      help="Citas usadas para calcular el promedio de este KPI.")
             st.success("✅ Valor esperado ~8.7 días — validado contra SIHOS nativo (7.92 días).")

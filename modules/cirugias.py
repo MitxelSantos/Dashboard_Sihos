@@ -92,24 +92,29 @@ def render_cirugias():
         with col1:
             render_metric_card("⚕️", "TOTAL CIRUGÍAS",
                 f"{int(stats.get('Total_Cirugias', 0)):,}",
-                COLORS['danger'], COLORS['warning'])
+                COLORS['danger'], COLORS['warning'],
+                help_text="Registros de ActoQuir con fecha de inicio en el rango seleccionado.")
         with col2:
             duracion = stats.get('Duracion_Promedio', 0) or 0
             render_metric_card("⏱️", "DURACIÓN PROM.",
                 f"{int(duracion)} min",
-                COLORS['warning'], COLORS['info'])
+                COLORS['warning'], COLORS['info'],
+                help_text="Minutos promedio entre inicio (FechInic+HoraInic) y fin (FechFina+HoraFina) de la cirugía.")
         with col3:
             render_metric_card("💉", "ANEST. GENERAL",
                 f"{int(stats.get('Anestesia_General', 0)):,}",
-                COLORS['primary'], COLORS['secondary'])
+                COLORS['primary'], COLORS['secondary'],
+                help_text="TipoAnes=1.")
         with col4:
             render_metric_card("🩺", "ANEST. REGIONAL",
                 f"{int(stats.get('Anestesia_Regional', 0)):,}",
-                COLORS['info'], COLORS['success'])
+                COLORS['info'], COLORS['success'],
+                help_text="TipoAnes=2.")
         with col5:
             render_metric_card("🔬", "ANEST. LOCAL",
                 f"{int(stats.get('Anestesia_Local', 0)):,}",
-                COLORS['success'], COLORS['secondary'])
+                COLORS['success'], COLORS['secondary'],
+                help_text="TipoAnes=3.")
     
     render_section_divider()
     

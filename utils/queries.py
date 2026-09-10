@@ -2288,6 +2288,117 @@ class SIHOSQueries:
         ORDER BY total_usuarios DESC
         """
 
+    # ─── PRODUCCIÓN DE PROFESIONALES ─────────────────────────────────────────
+    def get_profesionales_lista(self):
+        """Lista de profesionales con citas asignadas (no solo slots disponibles) en el período,
+        para el selector."""
+        return """
+        SELECT DISTINCT
+            dc.UsuaAsis                                 AS login,
+            u.Nombre                                    AS nombre,
+            COALESCE(e.NombEspe, 'Sin especialidad')    AS especialidad
+        FROM DetaCita dc
+        JOIN Usuarios u    ON dc.UsuaAsis = u.Login
+        LEFT JOIN CodiEspe e ON u.CodiEspe = e.CodiEspe
+        WHERE dc.EstaCita BETWEEN 2 AND 7
+          AND dc.FechCita BETWEEN :fecha_inicio AND :fecha_fin
+          AND dc.UsuaAsis IS NOT NULL
+          AND dc.UsuaAsis != ''
+        ORDER BY u.Nombre
+        """
+
+    def get_produccion_profesional_kpis(self):
+        """KPIs de producción de un profesional en el período.
+        Mapeo real verificado contra la tabla EstaCita: 1=Disponible, 2=Ocupada,
+        3=Cumplida, 4=Incumplida-Paciente, 5=Incumplida-Médico, 6=Cancelado,
+        7=Incumplida-Sistema. Códigos 8+ son tipos de slot internos de agenda,
+        no resultados de cita, y se excluyen. EstaCita=1 (Disponible) también se
+        excluye del total: es un slot abierto que nunca se asignó a un paciente,
+        no una cita real del profesional — incluirlo diluía el % de cumplimiento."""
+        return """
+        SELECT
+            SUM(CASE WHEN EstaCita = 3          THEN 1 ELSE 0 END) AS cumplidas,
+            SUM(CASE WHEN EstaCita = 2          THEN 1 ELSE 0 END) AS ocupadas,
+            SUM(CASE WHEN EstaCita = 6          THEN 1 ELSE 0 END) AS canceladas,
+            SUM(CASE WHEN EstaCita = 4          THEN 1 ELSE 0 END) AS inasistencias,
+            SUM(CASE WHEN EstaCita IN (5, 7)     THEN 1 ELSE 0 END) AS no_atendidas,
+            COUNT(*)                                                AS total,
+            AVG(CASE
+                WHEN EstaCita = 3 AND HoraFina IS NOT NULL AND HoraCita IS NOT NULL
+                THEN TIME_TO_SEC(TIMEDIFF(HoraFina, HoraCita)) / 60
+            END)                                                     AS duracion_prom_min
+        FROM DetaCita
+        WHERE UsuaAsis = :login
+          AND FechCita BETWEEN :fecha_inicio AND :fecha_fin
+          AND EstaCita BETWEEN 2 AND 7
+        """
+
+    def get_produccion_profesional_detalle(self):
+        """Detalle de todas las citas del profesional en el período.
+        Mapeo real verificado contra la tabla EstaCita (ver get_produccion_profesional_kpis)."""
+        return """
+        SELECT
+            dc.FechCita                                     AS fecha,
+            dc.HoraCita                                     AS hora_inicio,
+            dc.HoraFina                                     AS hora_fin,
+            CASE dc.EstaCita
+                WHEN 1  THEN 'Disponible'
+                WHEN 2  THEN 'Ocupada'
+                WHEN 3  THEN 'Cumplida'
+                WHEN 4  THEN 'Inasistencia (paciente)'
+                WHEN 5  THEN 'No atendida (médico)'
+                WHEN 6  THEN 'Cancelada'
+                WHEN 7  THEN 'No atendida (sistema)'
+                ELSE CONCAT('Estado ', dc.EstaCita)
+            END                                             AS estado,
+            COALESCE(f.NombFina, 'Sin finalidad')           AS finalidad,
+            dc.TipoCons                                     AS tipo_consulta,
+            CASE
+                WHEN dc.HoraFina IS NOT NULL AND dc.HoraCita IS NOT NULL
+                THEN ROUND(TIME_TO_SEC(TIMEDIFF(dc.HoraFina, dc.HoraCita)) / 60, 0)
+                ELSE NULL
+            END                                             AS duracion_min
+        FROM DetaCita dc
+        LEFT JOIN FinaCons f ON dc.FinaCons = f.CodiFina
+        WHERE dc.UsuaAsis = :login
+          AND dc.FechCita BETWEEN :fecha_inicio AND :fecha_fin
+          AND dc.EstaCita BETWEEN 2 AND 7
+        ORDER BY dc.FechCita DESC, dc.HoraCita DESC
+        """
+
+    def get_produccion_profesional_tendencia(self):
+        """Tendencia diaria de citas cumplidas vs no cumplidas.
+        Mapeo real verificado contra la tabla EstaCita (ver get_produccion_profesional_kpis)."""
+        return """
+        SELECT
+            FechCita                                             AS fecha,
+            SUM(CASE WHEN EstaCita = 3          THEN 1 ELSE 0 END) AS cumplidas,
+            SUM(CASE WHEN EstaCita IN (4,5,6,7) THEN 1 ELSE 0 END) AS no_cumplidas,
+            SUM(CASE WHEN EstaCita = 2          THEN 1 ELSE 0 END) AS pendientes
+        FROM DetaCita
+        WHERE UsuaAsis = :login
+          AND FechCita BETWEEN :fecha_inicio AND :fecha_fin
+          AND EstaCita BETWEEN 2 AND 7
+        GROUP BY FechCita
+        ORDER BY FechCita
+        """
+
+    def get_produccion_profesional_finalidad(self):
+        """Distribución de citas cumplidas por finalidad.
+        Mapeo real verificado contra la tabla EstaCita: 3=Cumplida (ver get_produccion_profesional_kpis)."""
+        return """
+        SELECT
+            COALESCE(f.NombFina, 'Sin finalidad')   AS finalidad,
+            COUNT(*)                                 AS total
+        FROM DetaCita dc
+        LEFT JOIN FinaCons f ON dc.FinaCons = f.CodiFina
+        WHERE dc.UsuaAsis = :login
+          AND dc.FechCita BETWEEN :fecha_inicio AND :fecha_fin
+          AND dc.EstaCita = 3
+        GROUP BY f.NombFina
+        ORDER BY total DESC
+        """
+
 
 def dataframe_to_excel(df) -> bytes:
     """Convierte un DataFrame a bytes de Excel para st.download_button."""

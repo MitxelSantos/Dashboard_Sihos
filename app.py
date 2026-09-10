@@ -20,6 +20,8 @@ from modules.cirugias import render_cirugias
 from modules.ocupacion import render_ocupacion
 from modules.laboratorio import render_laboratorio
 from modules.actividad import render_actividad
+from modules.profesionales import render_profesionales  # TEMPORAL: solo para comparar contra "actividad"
+from modules.citas import render_citas                  # TEMPORAL: solo para comparar contra "actividad"
 from modules.reportes import render_reportes
 from modules.inventario import show_inventario
 from modules.consultas_sql import render_consultas_sql
@@ -128,6 +130,8 @@ tab_functions = {
     "cirugias":       render_cirugias,
     "ocupacion":      render_ocupacion,
     "actividad":      render_actividad,
+    "profesionales":  render_profesionales,  # TEMPORAL: comparar contra "actividad"
+    "citas":          render_citas,          # TEMPORAL: comparar contra "actividad"
     "reportes":       render_reportes,
     "inventario_ti":  show_inventario,
     "consultas_sql":  render_consultas_sql,

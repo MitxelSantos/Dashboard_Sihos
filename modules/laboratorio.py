@@ -64,19 +64,23 @@ def render_laboratorio():
         with col1:
             render_metric_card("🧪", "TOTAL RESULTADOS",
                 f"{int(k.get('TotalResultados', 0)):,}",
-                COLORS['primary'], COLORS['secondary'])
+                COLORS['primary'], COLORS['secondary'],
+                help_text="Registros de DetaPrue (resultado individual por examen) en el rango seleccionado.")
         with col2:
             render_metric_card("👥", "PACIENTES",
                 f"{int(k.get('TotalPacientes', 0)):,}",
-                COLORS['info'], COLORS['primary'])
+                COLORS['info'], COLORS['primary'],
+                help_text="Admisiones (ConsAdmi) distintas con al menos un resultado de laboratorio.")
         with col3:
             render_metric_card("📋", "TIPOS DE EXAMEN",
                 f"{int(k.get('TiposExamen', 0)):,}",
-                COLORS['success'], COLORS['info'])
+                COLORS['success'], COLORS['info'],
+                help_text="Códigos de procedimiento (CodiProc) distintos solicitados en el período.")
         with col4:
             render_metric_card("📊", "PROM. EXÁMENES/PAC.",
                 f"{float(k.get('PromExamenesPaciente', 0)):.1f}",
-                COLORS['warning'], COLORS['secondary'])
+                COLORS['warning'], COLORS['secondary'],
+                help_text="Total Resultados / Pacientes — promedio de exámenes por paciente atendido.")
 
     render_section_divider()
 

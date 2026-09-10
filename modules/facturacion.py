@@ -153,9 +153,11 @@ ORDER BY Fecha
                 "TOTAL FACTURAS",
                 f"{total:,}",
                 COLORS['primary'],
-                COLORS['secondary']
+                COLORS['secondary'],
+                help_text="Facturas distintas (EncaFact, no anuladas) con fecha en el rango. "
+                          "El valor se calcula desde DetaFact, el detalle real por ítem."
             )
-        
+
         with col2:
             valor = float(stats.get('Valor_Total', 0))
             render_metric_card(
@@ -163,9 +165,10 @@ ORDER BY Fecha
                 "VALOR TOTAL",
                 f"${valor:,.0f}",
                 COLORS['success'],
-                COLORS['secondary']
+                COLORS['secondary'],
+                help_text="Suma de DetaFact.ValoTota de todas las facturas del período (no anuladas)."
             )
-        
+
         with col3:
             promedio = float(stats.get('Valor_Promedio', 0))
             render_metric_card(
@@ -173,9 +176,10 @@ ORDER BY Fecha
                 "PROMEDIO",
                 f"${promedio:,.0f}",
                 COLORS['info'],
-                COLORS['secondary']
+                COLORS['secondary'],
+                help_text="Valor Total / Total Facturas del período."
             )
-        
+
         with col4:
             maximo = float(stats.get('Valor_Maximo', 0))
             render_metric_card(
@@ -183,7 +187,8 @@ ORDER BY Fecha
                 "FACTURA MÁS ALTA",
                 f"${maximo:,.0f}",
                 COLORS['warning'],
-                COLORS['secondary']
+                COLORS['secondary'],
+                help_text="El ítem de mayor valor (DetaFact.ValoTota) facturado en el período."
             )
     
     render_section_divider()

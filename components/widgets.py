@@ -16,27 +16,35 @@ from config.settings import COLORS, METRIC_EMOJIS
 # MÉTRICAS
 # ============================================================================
 
-def render_metric_card(emoji, title, value, color_start=None, color_end=None):
+def render_metric_card(emoji, title, value, color_start=None, color_end=None, help_text=None):
     """
     Renderiza una métrica con estilo moderno
-    
+
     Args:
         emoji: Emoji para la métrica
         title: Título de la métrica
         value: Valor a mostrar
         color_start: Color inicial del gradiente (opcional)
         color_end: Color final del gradiente (opcional)
+        help_text: Texto explicativo opcional. Si se define, se muestra un
+            ícono "ⓘ" junto al título con un tooltip al pasar el mouse
+            (mismo patrón que el help= nativo de st.metric).
     """
     if not color_start:
         color_start = COLORS['primary']
     if not color_end:
         color_end = COLORS['secondary']
-    
+
+    help_html = ""
+    if help_text:
+        tooltip = str(help_text).replace('"', "&quot;").replace("\n", "&#10;")
+        help_html = f'<span class="metric-help" data-tooltip="{tooltip}" tabindex="0">?</span>'
+
     st.markdown(f"""
 <div class="metric-card">
     <div style="text-align: center;">
         <div class="metric-icon">{emoji}</div>
-        <div class="metric-label">{title}</div>
+        <div class="metric-label">{title}{help_html}</div>
         <div style="font-size: 2.5rem; font-weight: 700; color: {color_start};">{value}</div>
     </div>
 </div>
@@ -144,7 +152,8 @@ def render_stats_row(stats_list):
                 stat.get("title", "Métrica"),
                 stat.get("value", "0"),
                 stat.get("color_start"),
-                stat.get("color_end")
+                stat.get("color_end"),
+                stat.get("help_text")
             )
 
 # ============================================================================

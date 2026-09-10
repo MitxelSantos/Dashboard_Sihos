@@ -24,14 +24,6 @@ def render_ocupacion():
     """Función principal del módulo de Ocupación."""
 
     render_section_banner("🛏️", "Ocupación Hospitalaria")
-    st.caption(
-        "Solo camas reales: Activa=1, Habilita=1 · "
-        "Las camas virtuales (Habilita=0) están excluidas del conteo."
-    )
-    st.info(
-        "ℹ️ Las camas bloqueadas (admisión cerrada sin liberar o con egreso sin cerrar) "
-        "se analizan en detalle en **Reportes → Camas Bloqueadas**."
-    )
 
     @st.cache_data(ttl=CACHE_TTL)
     def load_ocupacion_data():
@@ -64,14 +56,21 @@ def render_ocupacion():
         pct          = round(ocupadas / total_reales * 100, 1) if total_reales > 0 else 0.0
 
         k1, k2, k3, k4, k5 = st.columns(5)
-        k1.metric("Camas reales",        f"{total_reales:,}")
-        k2.metric("Ocupadas",            f"{ocupadas:,}",
-                  delta=f"{pct}%")
-        k3.metric("Libres",              f"{libres:,}")
-        k4.metric("Bloqueadas",          f"{bloqueadas:,}",
-                  delta="ver Reportes", delta_color="inverse")
+        k1.metric("Camas reales", f"{total_reales:,}",
+                  help="Camas físicas en uso normal: CodiCama.Activa=1 y Habilita=1. "
+                       "Las camas virtuales (Habilita=0) quedan fuera de este conteo.")
+        k2.metric("Ocupadas", f"{ocupadas:,}",
+                  delta=f"{pct}%",
+                  help="Camas con una admisión válida y activa (Cerrado=2, Anulado=2, FechEgre IS NULL).")
+        k3.metric("Libres", f"{libres:,}",
+                  help="Camas reales sin ninguna admisión asignada (CodiCama.ConsAdmi vacío).")
+        k4.metric("Bloqueadas", f"{bloqueadas:,}",
+                  delta="ver Reportes", delta_color="inverse",
+                  help="Camas con admisión asignada que ya debería haberse liberado (cerrada, anulada "
+                       "o con egreso registrado). Detalle en Reportes → Camas Bloqueadas.")
         k5.metric("Virtuales excluidas", f"{virtuales:,}",
-                  delta="Habilita=0", delta_color="off")
+                  delta="Habilita=0", delta_color="off",
+                  help="Camas con Habilita=0 — no forman parte del inventario físico real y se excluyen del cálculo de ocupación.")
 
         # Barra de ocupación visual
         color_barra = "#4CAF50" if pct < 70 else "#FF9800" if pct < 90 else "#F44336"

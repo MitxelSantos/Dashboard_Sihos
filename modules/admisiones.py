@@ -156,37 +156,43 @@ def render_admisiones():
             render_metric_card(
                 "📊", "TOTAL ADMISIONES",
                 f"{int(stats.get('Total_Admisiones', 0)):,}",
-                COLORS['primary'], COLORS['secondary']
+                COLORS['primary'], COLORS['secondary'],
+                help_text="Admisiones válidas (Anulado=2) con fecha de ingreso en el rango seleccionado."
             )
         with col2:
             render_metric_card(
                 "✅", "ACTIVAS",
                 f"{int(stats.get('Activas', 0)):,}",
-                COLORS['success'], COLORS['info']
+                COLORS['success'], COLORS['info'],
+                help_text="Cerrado=2 — admisiones que SIHOS todavía considera abiertas (ver 'Admisiones sin Cerrar' en Reportes para el detalle)."
             )
         with col3:
             render_metric_card(
                 "🚨", "URGENCIAS",
                 f"{int(stats.get('Urgencias', 0)):,}",
-                COLORS['warning'], COLORS['danger']
+                COLORS['warning'], COLORS['danger'],
+                help_text="TipoAten=3."
             )
         with col4:
             render_metric_card(
                 "🛏️", "HOSPITALIZACIÓN",
                 f"{int(stats.get('Hospitalizacion', 0)):,}",
-                COLORS['info'], COLORS['primary']
+                COLORS['info'], COLORS['primary'],
+                help_text="TipoAten=2."
             )
         with col5:
             render_metric_card(
                 "👨‍⚕️", "CONSULTA EXTERNA",
                 f"{int(stats.get('Consulta_Externa', 0)):,}",
-                COLORS['secondary'], COLORS['success']
+                COLORS['secondary'], COLORS['success'],
+                help_text="TipoAten=1."
             )
         with col6:
             render_metric_card(
                 "💚", "PyP",
                 f"{int(stats.get('PyP', 0)):,}",
-                COLORS['success'], COLORS['secondary']
+                COLORS['success'], COLORS['secondary'],
+                help_text="TipoAten=4 — Promoción y Prevención."
             )
     
     render_section_divider()

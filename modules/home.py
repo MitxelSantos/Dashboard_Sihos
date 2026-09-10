@@ -63,31 +63,36 @@ def render_inicio():
             render_metric_card(
                 "📊", "ADMISIONES",
                 f"{int(adm.get('Total_Admisiones', 0)):,}",
-                COLORS['primary'], COLORS['secondary']
+                COLORS['primary'], COLORS['secondary'],
+                help_text="Admisiones válidas (Anulado=2) con fecha de ingreso hoy."
             )
         with col2:
             render_metric_card(
                 "🚨", "URGENCIAS",
                 f"{int(adm.get('Urgencias', 0)):,}",
-                COLORS['warning'], COLORS['danger']
+                COLORS['warning'], COLORS['danger'],
+                help_text="TipoAten=3, del total de admisiones de hoy."
             )
         with col3:
             render_metric_card(
                 "🛏️", "HOSPITALIZACIÓN",
                 f"{int(adm.get('Hospitalizacion', 0)):,}",
-                COLORS['info'], COLORS['primary']
+                COLORS['info'], COLORS['primary'],
+                help_text="TipoAten=2, del total de admisiones de hoy."
             )
         with col4:
             render_metric_card(
                 "👨‍⚕️", "CONSULTA EXTERNA",
                 f"{int(adm.get('Consulta_Externa', 0)):,}",
-                COLORS['success'], COLORS['secondary']
+                COLORS['success'], COLORS['secondary'],
+                help_text="TipoAten=1, del total de admisiones de hoy."
             )
         with col5:
             render_metric_card(
                 "💚", "PyP",
                 f"{int(adm.get('PyP', 0)):,}",
-                COLORS['secondary'], COLORS['success']
+                COLORS['secondary'], COLORS['success'],
+                help_text="TipoAten=4 — Promoción y Prevención, del total de admisiones de hoy."
             )
     
     render_section_divider()
@@ -109,9 +114,10 @@ def render_inicio():
                 "TOTAL FACTURADO",
                 f"${int(valor_total):,}",
                 COLORS['success'],
-                COLORS['info']
+                COLORS['info'],
+                help_text="Suma de DetaFact.ValoTota (facturas no anuladas) con fecha hoy. "
+                          "Puede diferir del reporte nativo SIHOS (~$800M de brecha conocida)."
             )
-            st.caption("*Fuente: DetaFact. Puede diferir del reporte nativo SIHOS (~$800M de brecha conocida).*")
 
         with col2:
             render_metric_card(
@@ -119,9 +125,10 @@ def render_inicio():
                 "FACTURAS",
                 f"{int(fact.get('Total_Facturas', 0)):,}",
                 COLORS['info'],
-                COLORS['primary']
+                COLORS['primary'],
+                help_text="Facturas distintas (EncaFact, no anuladas) emitidas hoy."
             )
-        
+
         with col3:
             promedio = fact.get('Promedio_Factura', 0) or 0
             render_metric_card(
@@ -129,7 +136,8 @@ def render_inicio():
                 "PROMEDIO",
                 f"${int(promedio):,}",
                 COLORS['primary'],
-                COLORS['secondary']
+                COLORS['secondary'],
+                help_text="Total Facturado / Facturas de hoy."
             )
     
     render_section_divider()
@@ -153,16 +161,18 @@ def render_inicio():
                     "PROCEDIMIENTOS",
                     f"{int(proc.get('Total_Procedimientos', 0)):,}",
                     COLORS['info'],
-                    COLORS['primary']
+                    COLORS['primary'],
+                    help_text="Registros de HojaProc con fecha hoy."
                 )
-            
+
             with col2:
                 render_metric_card(
                     "🏥",
                     "SERVICIOS USADOS",
                     f"{int(proc.get('Servicios_Activos', 0)):,}",
                     COLORS['success'],
-                    COLORS['secondary']
+                    COLORS['secondary'],
+                    help_text="Servicios (CodiServ) distintos con al menos un procedimiento hoy."
                 )
     
     with col_der:
@@ -179,9 +189,10 @@ def render_inicio():
                     "CIRUGÍAS",
                     f"{int(cir.get('Total_Cirugias', 0)):,}",
                     COLORS['danger'],
-                    COLORS['warning']
+                    COLORS['warning'],
+                    help_text="Registros de ActoQuir con fecha de inicio hoy."
                 )
-            
+
             with col2:
                 duracion = cir.get('Duracion_Promedio', 0) or 0
                 render_metric_card(
@@ -189,7 +200,8 @@ def render_inicio():
                     "DURACIÓN PROM.",
                     f"{int(duracion)} min",
                     COLORS['warning'],
-                    COLORS['info']
+                    COLORS['info'],
+                    help_text="Minutos promedio entre inicio y fin de las cirugías de hoy."
                 )
     
     render_section_divider()
@@ -215,9 +227,11 @@ def render_inicio():
                     "OCUPACIÓN",
                     f"{porcentaje:.1f}%",
                     color,
-                    COLORS['info']
+                    COLORS['info'],
+                    help_text="Camas reales (Activa=1, Habilita=1) ocupadas por admisiones válidas y activas "
+                              "con ≤60 días de estancia, sobre el total de camas reales."
                 )
-            
+
             with col2:
                 ocupadas = int(ocup.get('Ocupadas', 0))
                 total = int(ocup.get('Total_Camas', 0))
@@ -226,7 +240,8 @@ def render_inicio():
                     "CAMAS",
                     f"{ocupadas}/{total}",
                     COLORS['info'],
-                    COLORS['primary']
+                    COLORS['primary'],
+                    help_text="Camas reales ocupadas vs. total de camas reales disponibles."
                 )
     
     with col_der:
@@ -243,16 +258,18 @@ def render_inicio():
                     "ATENCIONES",
                     f"{int(prof.get('Total_Atenciones', 0)):,}",
                     COLORS['primary'],
-                    COLORS['secondary']
+                    COLORS['secondary'],
+                    help_text="Registros de RipsCons con fecha hoy."
                 )
-            
+
             with col2:
                 render_metric_card(
                     "👨‍⚕️",
                     "MÉDICOS ACTIVOS",
                     f"{int(prof.get('Profesionales_Activos', 0)):,}",
                     COLORS['success'],
-                    COLORS['info']
+                    COLORS['info'],
+                    help_text="Usuarios (UsuaCons) distintos con al menos una atención hoy."
                 )
     
     render_section_divider()
@@ -340,21 +357,24 @@ def render_inicio():
             render_metric_card(
                 "🟢", "ENVIADOS HOY",
                 f"{enviados:,}",
-                COLORS['success'], COLORS['secondary']
+                COLORS['success'], COLORS['secondary'],
+                help_text="estado_id=56 — envíos RDA de hoy recibidos y procesados por el Ministerio."
             )
             st.caption(f"↑ {enviados/total*100:.1f}% del total")
         with col2:
             render_metric_card(
                 "🟡", "PENDIENTES HOY",
                 f"{pendientes:,}",
-                COLORS['warning'], COLORS['secondary']
+                COLORS['warning'], COLORS['secondary'],
+                help_text="estado_id=57 — envíos RDA de hoy aún sin respuesta del Ministerio."
             )
             st.caption(f"↑ {pendientes/total*100:.1f}% del total")
         with col3:
             render_metric_card(
                 "🔴", "RECHAZADOS HOY",
                 f"{rechazados:,}",
-                COLORS['danger'], COLORS['secondary']
+                COLORS['danger'], COLORS['secondary'],
+                help_text="estado_id=58 — envíos RDA de hoy devueltos con error por el Ministerio."
             )
             st.caption(f"↑ {rechazados/total*100:.1f}% del total")
 

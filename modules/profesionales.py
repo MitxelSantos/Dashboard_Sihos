@@ -100,18 +100,20 @@ def render_profesionales():
                 "PROFESIONALES ACTIVOS",
                 f"{int(stats.get('Profesionales_Activos', 0)):,}",
                 COLORS['primary'],
-                COLORS['secondary']
+                COLORS['secondary'],
+                help_text="Usuarios (RipsCons.UsuaCons) distintos con al menos una atención en el período."
             )
-        
+
         with col2:
             render_metric_card(
                 "📋",
                 "TOTAL ATENCIONES",
                 f"{int(stats.get('Total_Atenciones', 0)):,}",
                 COLORS['info'],
-                COLORS['primary']
+                COLORS['primary'],
+                help_text="Registros de RipsCons con fecha en el rango seleccionado."
             )
-        
+
         with col3:
             realizadas = int(stats.get('Atenciones_Realizadas', 0))
             render_metric_card(
@@ -119,9 +121,10 @@ def render_profesionales():
                 "REALIZADAS",
                 f"{realizadas:,}",
                 COLORS['success'],
-                COLORS['info']
+                COLORS['info'],
+                help_text="EstaReal=1 — la atención quedó efectivamente registrada como realizada."
             )
-        
+
         with col4:
             pendientes = int(stats.get('Atenciones_Pendientes', 0))
             color_pendientes = COLORS['warning'] if pendientes > 100 else COLORS['success']
@@ -130,7 +133,8 @@ def render_profesionales():
                 "PENDIENTES",
                 f"{pendientes:,}",
                 color_pendientes,
-                COLORS['danger']
+                COLORS['danger'],
+                help_text="EstaReal=0 — atención programada/registrada pero aún no marcada como realizada."
             )
     
     render_section_divider()
