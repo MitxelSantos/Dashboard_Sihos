@@ -4,6 +4,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
 
+from components.widgets import render_heading_help
+
 EXCEL_PATH = Path("inventario_hospital_v1.xlsx")
 
 # ── Columnas de seguridad (CONF/INT/CRIT) ───────────────────────
@@ -218,8 +220,11 @@ def show_inventario():
     # TAB 3 — SEGURIDAD
     # ════════════════════════════════════════════════════════════
     with tab_seg:
-        st.subheader("Clasificación de seguridad de la información")
-        st.caption("Basado en atributos CONF (Confidencialidad), INT (Integridad), CRIT (Criticidad)")
+        render_heading_help(
+            "Clasificación de seguridad de la información",
+            "Basado en atributos CONF (Confidencialidad), INT (Integridad), CRIT (Criticidad).",
+            tag="h3"
+        )
 
         col_s1, col_s2 = st.columns(2)
 
@@ -245,7 +250,11 @@ def show_inventario():
             st.dataframe(top_risk, use_container_width=True, hide_index=True)
 
         st.divider()
-        st.markdown("##### Mapa de calor: atributos de seguridad por equipo")
+        render_heading_help(
+            "Mapa de calor: atributos de seguridad por equipo",
+            "C=Confidencialidad, I=Integridad, CR=Criticidad · Azul=Aplica, Gris=No aplica.",
+            tag="h5"
+        )
         heatmap_cols = CONF_COLS + INT_COLS + CRIT_COLS
         heatmap_cols = [c for c in heatmap_cols if c in df.columns]
         df_heat = df[['Código'] + heatmap_cols].set_index('Código')
@@ -266,7 +275,6 @@ def show_inventario():
         fig_heat.update_layout(height=380, margin=dict(t=10,b=10),
                                 xaxis_title='Equipo', yaxis_title='Atributo')
         st.plotly_chart(fig_heat, use_container_width=True)
-        st.caption("C=Confidencialidad, I=Integridad, CR=Criticidad · Azul=Aplica, Gris=No aplica")
 
     # ════════════════════════════════════════════════════════════
     # TAB 4 — MANTENIMIENTO

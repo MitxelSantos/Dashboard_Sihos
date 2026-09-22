@@ -104,9 +104,9 @@ def render_inicio():
     
     if not data['facturacion'].empty:
         fact = data['facturacion'].iloc[0]
-        
-        col1, col2, col3 = st.columns(3)
-        
+
+        col1, col2, col3, col4 = st.columns(4)
+
         with col1:
             valor_total = fact.get('Valor_Total', 0) or 0
             render_metric_card(
@@ -115,8 +115,8 @@ def render_inicio():
                 f"${int(valor_total):,}",
                 COLORS['success'],
                 COLORS['info'],
-                help_text="Suma de DetaFact.ValoTota (facturas no anuladas) con fecha hoy. "
-                          "Puede diferir del reporte nativo SIHOS (~$800M de brecha conocida)."
+                help_text="Suma de DetaFact.ValoTota (facturas no anuladas) con fecha hoy — "
+                          "incluye tanto causadas como pendientes de causar."
             )
 
         with col2:
@@ -138,6 +138,17 @@ def render_inicio():
                 COLORS['primary'],
                 COLORS['secondary'],
                 help_text="Total Facturado / Facturas de hoy."
+            )
+
+        with col4:
+            render_metric_card(
+                "⏳",
+                "PENDIENTES DE CAUSAR",
+                f"{int(fact.get('Facturas_Pendientes', 0)):,}",
+                COLORS['warning'],
+                COLORS['danger'],
+                help_text="Liquidaciones de hoy con Causado=0 (aún sin cerrar contablemente en "
+                          "SIHOS). Ver detalle y por facturador en la pestaña 💰 Facturación."
             )
     
     render_section_divider()

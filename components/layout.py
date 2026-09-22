@@ -270,9 +270,11 @@ def render_header():
         border: 1px solid rgba(255,255,255,0.5);
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         position: relative;
-        overflow: hidden;
+        /* Sin overflow:hidden a propósito: recortaría el tooltip .metric-help,
+           que se posiciona fuera del borde de la tarjeta. La barra de acento
+           (::before) se redondea a sí misma en su lugar (ver abajo). */
     }}
-    
+
     .metric-card::before {{
         content: '';
         position: absolute;
@@ -280,6 +282,7 @@ def render_header():
         left: 0;
         right: 0;
         height: 4px;
+        border-radius: 20px 20px 0 0;
         background: linear-gradient(90deg, {COLORS['primary']} 0%, {COLORS['secondary']} 100%);
         opacity: 0;
         transition: opacity 0.3s ease;
@@ -309,7 +312,69 @@ def render_header():
         letter-spacing: 1px;
         margin-bottom: 0.5rem;
     }}
-    
+
+    /* =================================================================
+       METRIC HELP TOOLTIP (ícono ⓘ estilo nativo de Streamlit)
+       ================================================================= */
+    .metric-help {{
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        margin-left: 6px;
+        border-radius: 50%;
+        background: rgba(108, 117, 125, 0.25);
+        color: var(--text-secondary);
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: none;
+        letter-spacing: normal;
+        line-height: 1;
+        cursor: help;
+        position: relative;
+        vertical-align: middle;
+    }}
+
+    .metric-help::after {{
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: 130%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #262730;
+        color: #fafafa;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 400;
+        text-transform: none;
+        letter-spacing: normal;
+        text-align: left;
+        white-space: normal;
+        width: max-content;
+        max-width: 220px;
+        line-height: 1.4;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.15s ease;
+        z-index: 1000;
+        pointer-events: none;
+        box-shadow: var(--shadow-md);
+    }}
+
+    .metric-help:hover::after,
+    .metric-help:focus::after {{
+        opacity: 1;
+        visibility: visible;
+    }}
+
+    /* Variante para usar sobre fondos de color (section-banner, etc.) */
+    .metric-help.metric-help-inverse {{
+        background: rgba(255, 255, 255, 0.3);
+        color: #ffffff;
+    }}
+
     /* =================================================================
        SECTION BANNER
        ================================================================= */

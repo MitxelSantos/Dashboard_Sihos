@@ -40,12 +40,25 @@ def render_metric_card(emoji, title, value, color_start=None, color_end=None, he
         tooltip = str(help_text).replace('"', "&quot;").replace("\n", "&#10;")
         help_html = f'<span class="metric-help" data-tooltip="{tooltip}" tabindex="0">?</span>'
 
+    # Tamaño de fuente del valor adaptado a su longitud: con 2.5rem fijo, valores
+    # largos (ej. "$7,339,664,055") partían a 2 líneas y el texto se salía por
+    # fuera de la tarjeta (.metric-card no tiene alto fijo, pero tampoco crecía
+    # en sync con el wrap — se veía "solapado" con la fila de abajo). nowrap +
+    # una fuente más chica para valores largos lo evita sin tocar el layout.
+    largo = len(str(value))
+    if largo > 13:
+        font_size = "1.5rem"
+    elif largo > 10:
+        font_size = "1.9rem"
+    else:
+        font_size = "2.5rem"
+
     st.markdown(f"""
 <div class="metric-card">
     <div style="text-align: center;">
         <div class="metric-icon">{emoji}</div>
         <div class="metric-label">{title}{help_html}</div>
-        <div style="font-size: 2.5rem; font-weight: 700; color: {color_start};">{value}</div>
+        <div style="font-size: {font_size}; font-weight: 700; color: {color_start}; white-space: nowrap;">{value}</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -54,21 +67,34 @@ def render_metric_card(emoji, title, value, color_start=None, color_end=None, he
 # SECTION BANNER
 # ============================================================================
 
-def render_section_banner(icon, title, fecha_rango=None):
+def _help_span(help_text, inverse=False):
+    """HTML del ícono ⓘ con tooltip (mismo patrón que render_metric_card)."""
+    if not help_text:
+        return ""
+    tooltip = str(help_text).replace('"', "&quot;").replace("\n", "&#10;")
+    css_class = "metric-help metric-help-inverse" if inverse else "metric-help"
+    return f'<span class="{css_class}" data-tooltip="{tooltip}" tabindex="0">?</span>'
+
+
+def render_section_banner(icon, title, fecha_rango=None, help_text=None):
     """
     Renderiza un banner de sección con gradiente
-    
+
     Args:
         icon: Emoji o icono
         title: Título de la sección
         fecha_rango: Rango de fechas opcional (ej: "15 Nov - 15 Dic 2024")
+        help_text: Texto explicativo opcional — agrega un ícono ⓘ junto al título
+            en vez de un st.caption/st.info suelto debajo del banner.
     """
+    help_html = _help_span(help_text, inverse=True)
+
     # Construir HTML del título
     if fecha_rango:
-        title_html = f'<h2>{title}</h2><div style="font-size: 0.85rem; color: rgba(255,255,255,0.8); margin-top: -5px;">({fecha_rango})</div>'
+        title_html = f'<h2>{title}{help_html}</h2><div style="font-size: 0.85rem; color: rgba(255,255,255,0.8); margin-top: -5px;">({fecha_rango})</div>'
     else:
-        title_html = f'<h2>{title}</h2>'
-    
+        title_html = f'<h2>{title}{help_html}</h2>'
+
     # Renderizar banner
     st.markdown(f'''
 <div class="section-banner">
@@ -76,6 +102,25 @@ def render_section_banner(icon, title, fecha_rango=None):
     {title_html}
 </div>
 ''', unsafe_allow_html=True)
+
+
+def render_heading_help(text, help_text, tag="h4", extra_style=""):
+    """
+    Renderiza un encabezado (h4 por defecto, como st.markdown('#### ...')) con un
+    ícono ⓘ de tooltip al final, en vez de un st.caption separado debajo.
+
+    Args:
+        text: Texto del encabezado (puede traer markdown simple, ej. negrillas)
+        help_text: Texto explicativo que se muestra en el tooltip al hover
+        tag: Etiqueta HTML del encabezado (h3, h4, h5...) — h4 ≈ st.markdown('####')
+        extra_style: CSS inline adicional opcional para el tag
+    """
+    help_html = _help_span(help_text)
+    style_attr = f' style="{extra_style}"' if extra_style else ""
+    st.markdown(
+        f'<{tag}{style_attr}>{text}{help_html}</{tag}>',
+        unsafe_allow_html=True
+    )
 
 # ============================================================================
 # GRADIENT CARD

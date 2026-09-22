@@ -22,6 +22,7 @@ from components.widgets import (
     render_metric_card,
     render_section_banner,
     render_section_divider,
+    render_heading_help,
 )
 from components.layout import render_footer
 
@@ -167,19 +168,21 @@ def render_citas():
                 )
 
             fig.update_layout(height=420)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="citas_fig_distribucion")
 
         with col_tabla:
             st.markdown("### Resumen")
             total = data["distribucion"]["TotalCitas"].sum()
             st.metric("Total Citas", f"{int(total):,}")
-            st.markdown("#### Detalle")
+            render_heading_help(
+                "Detalle", "Solo estados 1-7. Códigos internos (8-95) excluidos.",
+                tag="h4"
+            )
             st.dataframe(
                 data["distribucion"],
                 use_container_width=True,
                 hide_index=True,
             )
-            st.caption("*Solo estados 1-7. Códigos internos (8-95) excluidos.*")
     else:
         st.info("No hay datos de distribución de citas para el período seleccionado.")
 
@@ -188,13 +191,11 @@ def render_citas():
     # =========================================================================
     # INDICADORES DE OPORTUNIDAD — DOS KPIs SEPARADOS
     # =========================================================================
-    render_section_banner("⏱️", "Oportunidad de Acceso a Citas", rango_fechas)
-
-    st.info(
-        "Los dos KPIs miden perspectivas distintas de la espera. "
-        "**KPI 1** parte de cuándo el paciente solicita la cita. "
-        "**KPI 2** parte de cuándo el sistema la asigna (validado contra SIHOS nativo).",
-        icon="ℹ️",
+    render_section_banner(
+        "⏱️", "Oportunidad de Acceso a Citas", rango_fechas,
+        help_text="Los dos KPIs miden perspectivas distintas de la espera. KPI 1 parte "
+                  "de cuándo el paciente solicita la cita. KPI 2 parte de cuándo el "
+                  "sistema la asigna (validado contra SIHOS nativo)."
     )
 
     col_kpi1, col_kpi2 = st.columns(2)

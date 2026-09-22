@@ -17,7 +17,8 @@ from utils.queries import SIHOSQueries, dataframe_to_excel
 from config.settings import COLORS, CACHE_TTL
 from components.widgets import (
     get_fecha_rango_texto, render_metric_card,
-    render_section_banner, render_section_divider
+    render_section_banner, render_section_divider,
+    render_heading_help
 )
 from components.layout import render_footer
 
@@ -163,7 +164,11 @@ def _render_profesionales(fecha_inicio, fecha_fin, rango_fechas):
     render_section_divider()
 
     # Heatmap
-    render_section_banner("🌡️", "Mapa de Calor — Carga Horaria", rango_fechas)
+    render_section_banner(
+        "🌡️", "Mapa de Calor — Carga Horaria", rango_fechas,
+        help_text="Las celdas más oscuras indican mayor concentración de atenciones. "
+                  "Útil para planificación de turnos y recursos."
+    )
 
     if not data['heatmap_hora'].empty:
         df_heat = data['heatmap_hora'].copy()
@@ -181,10 +186,6 @@ def _render_profesionales(fecha_inicio, fecha_fin, rango_fechas):
         )
         fig_heat.update_layout(height=500)
         st.plotly_chart(fig_heat, use_container_width=True)
-        st.caption(
-            "Las celdas más oscuras indican mayor concentración de atenciones. "
-            "Útil para planificación de turnos y recursos."
-        )
     else:
         st.info("No hay datos de horario de atenciones para el período seleccionado.")
 
@@ -430,9 +431,11 @@ def _render_citas(fecha_inicio, fecha_fin, rango_fechas):
             fig.update_layout(height=380)
             st.plotly_chart(fig, use_container_width=True)
         with col_t:
-            st.markdown("#### Detalle")
+            render_heading_help(
+                "Detalle", "Solo estados 1-7. Códigos internos (8-95) excluidos.",
+                tag="h4"
+            )
             st.dataframe(data['distribucion'], use_container_width=True, hide_index=True)
-            st.caption("*Solo estados 1-7. Códigos internos (8-95) excluidos.*")
             st.download_button("📥 CSV",
                 data['distribucion'].to_csv(index=False, encoding='utf-8-sig'),
                 f"citas_estado_{fecha_inicio}_{fecha_fin}.csv", mime="text/csv")

@@ -8,7 +8,18 @@ import time
 from streamlit_autorefresh import st_autorefresh
 from config.settings import PAGE_TITLE, PAGE_ICON, LAYOUT, TABS_CONFIG, TAB_ORDER
 
-SESSION_TIMEOUT = 7200  # 2 horas de inactividad → cierre automático
+# Inactividad antes del cierre automático de sesión. Antes 2h (muy corto para turnos
+# largos); ahora 12h por defecto y configurable en .streamlit/secrets.toml:
+#   [sesion]
+#   timeout_horas = 12
+def _leer_timeout_sesion() -> int:
+    try:
+        horas = float(st.secrets.get("sesion", {}).get("timeout_horas", 12))
+    except Exception:
+        horas = 12
+    return int(max(horas, 0.25) * 3600)
+
+SESSION_TIMEOUT = _leer_timeout_sesion()
 from components.layout import render_header, render_sidebar, render_footer
 
 # Importar módulos

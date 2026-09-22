@@ -13,7 +13,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from utils.db_connector import get_db_connector
 from utils.queries import SIHOSQueries, dataframe_to_excel
 from config.settings import COLORS
-from components.widgets import render_section_banner, render_section_divider
+from components.widgets import render_section_banner, render_section_divider, render_heading_help
 from components.layout import render_footer
 
 
@@ -206,10 +206,12 @@ def _render_resolucion_373():
                                      date.today().replace(day=1))
     fecha_fin = st.session_state.get('sidebar_fecha_fin', date.today())
 
-    st.info(
-        "Indicadores de oportunidad de atención en urgencias según **Resolución 3678 de 2023** "
-        "(antes Resolución 5596/2015). Tiempo medido desde el ingreso hasta la clasificación de triage.",
-        icon="ℹ️"
+    render_heading_help(
+        "🚨 Resolución 373 — Tiempos de Espera en Urgencias",
+        "Indicadores de oportunidad de atención en urgencias según Resolución 3678 de "
+        "2023 (antes Resolución 5596/2015). Tiempo medido desde el ingreso hasta la "
+        "clasificación de triage.",
+        tag="h3"
     )
 
     params = {"fecha_inicio": str(fecha_ini), "fecha_fin": str(fecha_fin)}
@@ -402,8 +404,11 @@ def _render_admisiones_sin_cerrar(db, queries):
     import plotly.express as px
     import io
 
-    st.subheader("📂 Admisiones sin Cerrar")
-    st.caption("Las ambulatorias (TipoAten=1,4) no bloquean camas pero afectan RIPS y estadísticas.")
+    render_heading_help(
+        "📂 Admisiones sin Cerrar",
+        "Las ambulatorias (TipoAten=1,4) no bloquean camas pero afectan RIPS y estadísticas.",
+        tag="h2"
+    )
 
     with st.spinner("Cargando distribución..."):
         try:
@@ -506,11 +511,12 @@ def _render_admisiones_sin_cerrar(db, queries):
             )
 
     st.divider()
-    st.markdown("### 🗂️ Agrupación por área — para reunión de cierre con jefes de servicio")
-    st.info(
-        "ℹ️ Esta vista incluye TODAS las admisiones sin cerrar por área "
-        "(ambulatorios, diagnósticos, hospitalización, etc.). Para ver únicamente "
-        "las que bloquean una cama física, ir a **Camas Bloqueadas**."
+    render_heading_help(
+        "🗂️ Agrupación por área — para reunión de cierre con jefes de servicio",
+        "Esta vista incluye TODAS las admisiones sin cerrar por área (ambulatorios, "
+        "diagnósticos, hospitalización, etc.). Para ver únicamente las que bloquean "
+        "una cama física, ir a Camas Bloqueadas.",
+        tag="h3"
     )
 
     with st.spinner("Cargando agrupación por área..."):
@@ -597,10 +603,11 @@ def _render_camas_bloqueadas(db, queries):
     import plotly.express as px
     import io
 
-    st.subheader("🛏️ Camas Bloqueadas")
-    st.caption(
+    render_heading_help(
+        "🛏️ Camas Bloqueadas",
         "Camas en CodiCama apuntando a admisiones que ya deberían estar liberadas. "
-        "Use el conteo de seguimiento para verificar avance en el tiempo."
+        "Use el conteo de seguimiento para verificar avance en el tiempo.",
+        tag="h2"
     )
 
     # ── Conteo de seguimiento (reales vs virtuales) ─────────────────────────
@@ -931,12 +938,11 @@ def _render_sismed(db, queries):
     import plotly.express as px
     import plotly.graph_objects as go
 
-    st.subheader("📦 SISMED — Servicios y Procedimientos Facturados")
-    st.caption(
-        "Fuente: DetaFact (CodiDocu='LIQ') · "
-        "Nombre: CodiProc.NombProc · "
-        "Clave: DetaFact.CodiServ = CodiProc.CodiProc · "
-        "Fecha: FechDigi"
+    render_heading_help(
+        "📦 SISMED — Servicios y Procedimientos Facturados",
+        "Fuente: DetaFact (CodiDocu='LIQ') · Nombre: CodiProc.NombProc · "
+        "Clave: DetaFact.CodiServ = CodiProc.CodiProc · Fecha: FechDigi",
+        tag="h2"
     )
 
     col_f1, col_f2 = st.columns(2)

@@ -92,7 +92,10 @@ class DatabaseConnector:
                 database=self.database,
                 charset='utf8mb4',
                 collation='utf8mb4_general_ci',
-                init_command="SET SESSION sql_mode=''"
+                init_command="SET SESSION sql_mode=''",
+                # Sin timeout, un servidor saturado dejaba la app colgada para siempre
+                # en "Running ...". Con 15s falla rápido y muestra el error.
+                connection_timeout=15
             )
             return self.connection
         except Error as e:
@@ -123,6 +126,13 @@ class DatabaseConnector:
         except Exception as e:
             st.error(f"Error general: {e}")
             return pd.DataFrame()
+        finally:
+            # get_db_connector() crea una instancia nueva por llamada y antes NUNCA
+            # cerraba la conexión: cada query dejaba una conexión abierta hasta el
+            # wait_timeout del servidor (21000s ≈ 5.8h). Con 13 pestañas + auto-refresh
+            # cada 5 min se llegó a Max_used_connections=501 sobre max_connections=500
+            # (compartido con el SIHOS de producción).
+            self.close()
     
     def close(self):
         """Cerrar conexión"""

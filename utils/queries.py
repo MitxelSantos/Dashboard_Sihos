@@ -407,7 +407,11 @@ class SIHOSQueries:
     # ========================================================================
     
     def get_facturacion_hoy(self):
-        """Facturación del día actual — fuente: DetaFact (valor real por ítems)"""
+        """Facturación del día actual — fuente: DetaFact (valor real por ítems), nunca
+        EncaFact.ValoTota directo (ver nota completa en get_facturacion_detalle_periodo:
+        el encabezado queda en $0 mientras Causado=0). Incluye el desglose Causado/
+        Pendiente para que la tarjeta de Home use el mismo lenguaje que el tab
+        Facturación ('Facturado (causado)' vs 'Pendiente de Causar')."""
         return """
         SELECT
             COALESCE(SUM(df.ValoTota), 0) AS Valor_Total,
@@ -416,7 +420,10 @@ class SIHOSQueries:
                 COALESCE(SUM(df.ValoTota), 0)
                 / NULLIF(COUNT(DISTINCT CONCAT(ef.CodiInst, ef.CodiAno, ef.CodiDocu, ef.NumeFact)), 0)
             , 0) AS Promedio_Factura,
-            MAX(df.ValoTota) AS Factura_Mayor
+            MAX(df.ValoTota) AS Factura_Mayor,
+            COALESCE(SUM(CASE WHEN ef.Causado = 0 THEN df.ValoTota ELSE 0 END), 0) AS Valor_Pendiente,
+            COUNT(DISTINCT CASE WHEN ef.Causado = 0
+                  THEN CONCAT(ef.CodiInst, ef.CodiAno, ef.CodiDocu, ef.NumeFact) END) AS Facturas_Pendientes
         FROM DetaFact df
         JOIN EncaFact ef
             ON  ef.CodiInst = df.CodiInst
@@ -427,199 +434,72 @@ class SIHOSQueries:
           AND DATE(ef.FechFact) = CURDATE()
         """
     
-    def get_estadisticas_facturacion(self):
-        """Estadísticas de facturación — fuente: DetaFact (valor real por ítems)"""
+    def get_facturacion_detalle_periodo(self):
+        """Detalle de facturación a nivel de liquidación individual — fuente ÚNICA para
+        todo el tab de Facturación (KPIs, distribución, top facturas, por facturador).
+        NO filtra Anulado ni Causado aquí a propósito: cada vista (Facturado/Pendiente/
+        Anulada/por Facturador) decide su propio filtro en Python sobre este mismo
+        DataFrame, así el drill-down (clic en gráfica → tabla) es solo un filtro más,
+        sin queries nuevas ni riesgo de que chart y tabla se desincronicen.
+
+        Por qué el valor SIEMPRE sale de DetaFact (vía subquery agregada), nunca de
+        EncaFact.ValoTota directo: confirmado sep-2026, mientras una liquidación no ha
+        sido 'causada' (Causado=0) TODO su encabezado (ValoTota, SubTota, ValoIVA,
+        ValoCopa, ValoEAPB, ValoUsua) queda en $0, aunque el detalle en DetaFact ya
+        tenga los valores reales de los ítems facturados. Impacto medido: 7,269
+        liquidaciones históricas con encabezado en $0 pero $4,845M reales en detalle;
+        en solo mes y medio la diferencia agregada fue de ~$2,300M (EncaFact $12,528M
+        vs DetaFact $14,852M) — la causa de la discrepancia reportada por el usuario
+        entre las tarjetas KPI (ya usaban DetaFact) y las gráficas de distribución
+        (usaban EncaFact.ValoTota, con muchos $0 ocultos).
+        ValoCopa/ValoEAPB/ValoUsua sí vienen de EncaFact (ese desglose no existe en
+        DetaFact) — por eso solo son confiables para liquidaciones con Causado=1."""
         return """
         SELECT
-            COALESCE(SUM(df.ValoTota), 0) AS Valor_Total,
-            COUNT(DISTINCT CONCAT(ef.CodiInst, ef.CodiAno, ef.CodiDocu, ef.NumeFact)) AS Total_Facturas,
-            ROUND(
-                COALESCE(SUM(df.ValoTota), 0)
-                / NULLIF(COUNT(DISTINCT CONCAT(ef.CodiInst, ef.CodiAno, ef.CodiDocu, ef.NumeFact)), 0)
-            , 0) AS Valor_Promedio,
-            MAX(df.ValoTota) AS Valor_Maximo
-        FROM DetaFact df
-        JOIN EncaFact ef
-            ON  ef.CodiInst = df.CodiInst
-            AND ef.CodiAno  = df.CodiAno
-            AND ef.CodiDocu = df.CodiDocu
-            AND ef.NumeFact = df.NumeFact
-        WHERE ef.Anulado = 0
-          AND ef.FechFact BETWEEN :fecha_inicio AND :fecha_fin
-        """
-    
-    def get_facturacion_por_rango(self):
-        """Distribución por rangos de valor"""
-        return """
-        SELECT 
-            CASE 
-                WHEN ValoTota < 100000 THEN 'Menos de $100K'
-                WHEN ValoTota < 500000 THEN '$100K - $500K'
-                WHEN ValoTota < 1000000 THEN '$500K - $1M'
-                WHEN ValoTota < 5000000 THEN '$1M - $5M'
-                WHEN ValoTota < 10000000 THEN '$5M - $10M'
-                ELSE 'Más de $10M'
-            END as Rango,
-            COUNT(*) as Total
-        FROM EncaFact
-        WHERE FechFact BETWEEN :fecha_inicio AND :fecha_fin
-            AND Anulado = 0
-            AND ValoTota > 0
-        GROUP BY Rango
-        ORDER BY MIN(ValoTota)
-        """
-    
-    def get_facturacion_por_tipo_afiliacion(self):
-        """Facturación por tipo de afiliación"""
-        return """
-        SELECT 
-            CASE 
-                WHEN TipoAfil = 'A' THEN 'Tipo A'
-                WHEN TipoAfil = 'B' THEN 'Tipo B'
-                WHEN TipoAfil = 'C' THEN 'Tipo C'
-                WHEN TipoAfil = 'D' THEN 'Tipo D'
-                ELSE 'No Especificado'
-            END as Tipo,
-            COUNT(*) as Total_Facturas,
-            SUM(ValoTota) as Valor_Total
-        FROM EncaFact
-        WHERE FechFact BETWEEN :fecha_inicio AND :fecha_fin
-            AND Anulado = 0
-        GROUP BY TipoAfil
-        ORDER BY Valor_Total DESC
-        """
-    
-    def get_facturacion_por_servicio(self):
-        """Facturación por servicio"""
-        return """
-        SELECT 
-            COALESCE(cs.NombServ, ef.CodiServ, 'Sin Definir') as Servicio,
-            COUNT(*) as Total_Facturas,
-            SUM(ef.ValoTota) as Valor_Total
-        FROM EncaFact ef
-        LEFT JOIN CodiServ cs ON ef.CodiServ = cs.CodiServ
-        WHERE ef.FechFact BETWEEN :fecha_inicio AND :fecha_fin
-            AND ef.Anulado = 0
-            AND ef.CodiServ IS NOT NULL
-            AND ef.CodiServ != ''
-        GROUP BY ef.CodiServ, cs.NombServ
-        ORDER BY Valor_Total DESC
-        LIMIT 10
-        """
-    
-    def get_facturacion_por_tipo_documento(self):
-        """Facturación por tipo de documento"""
-        return """
-        SELECT
+            ef.NumeFact,
+            ef.FechFact                                              AS Fecha,
+            ef.CodiServ,
+            COALESCE(cs.NombServ, ef.CodiServ, 'Sin Definir')       AS Servicio,
+            ef.TipoAfil,
+            COALESCE(ta.NombTipo, CONCAT('Tipo ', ef.TipoAfil))     AS TipoAfiliacion,
+            ef.Anulado,
+            ef.Causado,
             CASE
-                WHEN TipoDocu = 'CC' THEN 'Cédula de Ciudadanía'
-                WHEN TipoDocu = 'TI' THEN 'Tarjeta de Identidad'
-                WHEN TipoDocu = 'RC' THEN 'Registro Civil'
-                WHEN TipoDocu = 'CN' THEN 'Certificado Nacido Vivo'
-                WHEN TipoDocu = 'CE' THEN 'Cédula de Extranjería'
-                WHEN TipoDocu = 'PA' THEN 'Pasaporte'
-                ELSE CONCAT('Otro (', COALESCE(TipoDocu, 'ND'), ')')
-            END as Tipo_Documento,
-            COUNT(*) as Total_Facturas,
-            SUM(ValoTota) as Valor_Total
-        FROM EncaFact
-        WHERE FechFact BETWEEN :fecha_inicio AND :fecha_fin
-            AND Anulado = 0
-        GROUP BY TipoDocu
-        ORDER BY Valor_Total DESC
-        """
-    
-    def get_facturacion_por_estado(self):
-        """Facturación por estado (anulado/activo)"""
-        return """
-        SELECT 
-            CASE 
-                WHEN Anulado = 0 THEN 'Activa'
-                WHEN Anulado = 1 THEN 'Anulada'
-                ELSE 'Otro'
-            END as Estado,
-            COUNT(*) as Total_Facturas,
-            SUM(ValoTota) as Valor_Total
-        FROM EncaFact
-        WHERE FechFact BETWEEN :fecha_inicio AND :fecha_fin
-        GROUP BY Anulado
-        ORDER BY Valor_Total DESC
-        """
-    
-    def get_facturacion_por_mes(self):
-        """Facturación agrupada por mes"""
-        return """
-        SELECT 
-            DATE_FORMAT(FechFact, '%Y-%m') as Mes,
-            DATE_FORMAT(FechFact, '%M %Y') as Mes_Nombre,
-            COUNT(*) as Total_Facturas,
-            SUM(ValoTota) as Valor_Total
-        FROM EncaFact
-        WHERE FechFact BETWEEN :fecha_inicio AND :fecha_fin
-            AND Anulado = 0
-        GROUP BY DATE_FORMAT(FechFact, '%Y-%m')
-        ORDER BY Mes
-        """
-    
-    def get_top_facturas_altas(self):
-        """Top facturas más altas"""
-        return """
-        SELECT 
-            NumeFact as Numero_Factura,
-            FechFact as Fecha,
-            COALESCE(cs.NombServ, ef.CodiServ) as Servicio,
-            CASE 
-                WHEN TipoAfil = 'A' THEN 'Tipo A'
-                WHEN TipoAfil = 'B' THEN 'Tipo B'
-                WHEN TipoAfil = 'C' THEN 'Tipo C'
-                WHEN TipoAfil = 'D' THEN 'Tipo D'
-                ELSE 'No Especificado'
-            END as Tipo_Afiliacion,
-            ValoTota as Valor_Total
+                WHEN ef.Anulado = 1 THEN 'Anulada'
+                WHEN ef.Causado = 1 THEN 'Causada'
+                ELSE 'Preliminar'
+            END                                                       AS Estado,
+            COALESCE(d.Valor_Detalle, 0)                            AS Valor_Total,
+            ef.ValoCopa                                              AS Valor_Copago,
+            ef.ValoEAPB                                              AS Valor_EAPB,
+            ef.ValoUsua                                              AS Valor_Usuario,
+            COALESCE(uf.Nombre, ef.UsuaDigi)                        AS Facturador,
+            ef.UsuaDigi,
+            COALESCE(ua.Nombre, ef.UsuaAnul)                        AS Anulador,
+            ef.UsuaAnul,
+            ca.NombCaus                                              AS CausaAnulacion,
+            NULLIF(TRIM(REPLACE(REPLACE(ef.NotaAnul, CHAR(13), ' '), CHAR(10), ' ')), '')
+                                                                     AS MotivoAnulacion,
+            NULLIF(ef.FechAnul, '0000-00-00')                        AS FechaAnulacion
         FROM EncaFact ef
-        LEFT JOIN CodiServ cs ON ef.CodiServ = cs.CodiServ
-        WHERE FechFact BETWEEN :fecha_inicio AND :fecha_fin
-            AND Anulado = 0
-            AND ValoTota > 0
-        ORDER BY ValoTota DESC
-        LIMIT 100
-        """
-    
-    def get_analisis_cartera(self):
-        """Análisis general de cartera"""
-        return """
-        SELECT
-            COUNT(ef.NumeFact) AS Total_Facturas,
-            SUM(ef.ValoTota) AS Valor_Total_Facturado,
-            COUNT(fe.NumeDocu) AS Facturas_Electronicas,
-            COUNT(CASE WHEN fe.NumeDocu IS NULL THEN 1 END) AS Sin_Factura_Electronica,
-            ROUND(AVG(ef.ValoTota), 0) AS Valor_Promedio_Factura,
-            SUM(CASE WHEN ef.ValoTota > 1000000 THEN ef.ValoTota ELSE 0 END) AS Valor_Facturas_Altas
-        FROM EncaFact ef
-        LEFT JOIN FactElec fe ON fe.CodiInst = ef.CodiInst
-            AND fe.CodiAno = ef.CodiAno
-            AND fe.NumeDocu = ef.NumeFact
-            AND fe.CodiDocu = 'FE'
+        LEFT JOIN CodiServ cs ON cs.CodiServ = ef.CodiServ
+        LEFT JOIN TipoAfil ta ON ta.CodiTipo = ef.TipoAfil
+        LEFT JOIN Usuarios uf ON uf.Login = ef.UsuaDigi
+        LEFT JOIN Usuarios ua ON ua.Login = ef.UsuaAnul
+        LEFT JOIN CausAnul ca ON ca.CodiCaus = ef.CausAnul
+        LEFT JOIN (
+            /* Acotado al rango: agrupar DetaFact completa (3.4M filas) en cada carga
+               era el costo dominante y se repetía en cada rerun/sesión. */
+            SELECT dd.CodiInst, dd.CodiAno, dd.CodiDocu, dd.NumeFact,
+                   SUM(dd.ValoTota) AS Valor_Detalle
+            FROM EncaFact e2
+            JOIN DetaFact dd ON dd.CodiInst = e2.CodiInst AND dd.CodiAno = e2.CodiAno
+                            AND dd.CodiDocu = e2.CodiDocu AND dd.NumeFact = e2.NumeFact
+            WHERE e2.FechFact BETWEEN :fecha_inicio AND :fecha_fin
+            GROUP BY dd.CodiInst, dd.CodiAno, dd.CodiDocu, dd.NumeFact
+        ) d ON d.CodiInst = ef.CodiInst AND d.CodiAno = ef.CodiAno
+           AND d.CodiDocu = ef.CodiDocu AND d.NumeFact = ef.NumeFact
         WHERE ef.FechFact BETWEEN :fecha_inicio AND :fecha_fin
-            AND ef.Anulado = 0
-        """
-    
-    def get_indicadores_recaudo(self):
-        """Indicadores de recaudo por servicio"""
-        return """
-        SELECT 
-            COALESCE(cs.NombServ, ef.CodiServ, 'Sin Definir') as Servicio,
-            COUNT(*) as Total_Facturas,
-            SUM(ef.ValoTota) as Valor_Total,
-            ROUND(AVG(ef.ValoTota), 0) as Valor_Promedio
-        FROM EncaFact ef
-        LEFT JOIN CodiServ cs ON ef.CodiServ = cs.CodiServ
-        WHERE ef.FechFact BETWEEN :fecha_inicio AND :fecha_fin
-            AND ef.Anulado = 0
-            AND ef.CodiServ IS NOT NULL
-            AND ef.CodiServ != ''
-        GROUP BY ef.CodiServ, cs.NombServ
-        ORDER BY Valor_Total DESC
         """
     
     # ========================================================================
@@ -1148,9 +1028,10 @@ class SIHOSQueries:
                 WHEN a.FechIngr IS NOT NULL
                 THEN DATEDIFF(CURDATE(), a.FechIngr)
             END                                                       AS dias_ocupada,
-            a.UsuaModi                                                AS responsable
+            COALESCE(u.Nombre, a.UsuaModi)                            AS responsable
         FROM CodiCama cc
         LEFT JOIN Admision a ON cc.ConsAdmi = a.ConsAdmi
+        LEFT JOIN Usuarios u ON u.Login = a.UsuaModi
         WHERE cc.Activa = 1
           AND cc.Habilita = 1
         ORDER BY cc.CodiServ, estado, cc.CodiCama
@@ -1918,12 +1799,13 @@ class SIHOSQueries:
             WHEN 57 THEN '🟡 Pendiente'
             WHEN 58 THEN '🔴 Rechazado'
         END                 AS Estado,
-        e.usuario           AS UsuarioSIHOS,
+        COALESCE(u.Nombre, e.usuario) AS UsuarioSIHOS,
         e.created_at        AS FechaEnvio,
         a.json_respuesta    AS JsonRespuesta,
         a.created_at        AS FechaRespuesta
     FROM EnviRda e
     LEFT JOIN AudiRda a ON a.EnviRda_id = e.id
+    LEFT JOIN Usuarios u ON u.Login = e.usuario
     WHERE e.ConsAdmi = :consadmi
       AND e.deleted_at IS NULL
     ORDER BY e.tipo_rda_id, a.created_at DESC
@@ -2012,7 +1894,7 @@ class SIHOSQueries:
             DATEDIFF(a.FechEgre, a.FechIngr)         AS DiasEstancia,
             COALESCE(cs.NombServ, a.CodiServ)        AS Servicio,
             a.DiagIngr                               AS Diagnostico,
-            a.UsuaModi                               AS UsuarioCierre,
+            COALESCE(u.Nombre, a.UsuaModi)            AS UsuarioCierre,
             a.FechModi                               AS FechaCierre,
             CASE
                 WHEN DATEDIFF(a.FechEgre, a.FechIngr) > 365 THEN '⛔ Más de 1 año'
@@ -2023,6 +1905,7 @@ class SIHOSQueries:
         FROM Admision a
         LEFT JOIN CodiServ cs ON cs.CodiServ = a.CodiServ
         LEFT JOIN Paciente p  ON p.NumeUsua  = a.NumeUsua
+        LEFT JOIN Usuarios u  ON u.Login     = a.UsuaModi
         WHERE a.TipoAten = 2
           AND a.Anulado  = 2
           AND a.FechEgre IS NOT NULL
@@ -2034,7 +1917,46 @@ class SIHOSQueries:
         """
 
     # ─── ADMISIONES SIN CERRAR ────────────────────────────────────────────────
+    def get_admisiones_listado_egreso(self):
+        """Listado de admisiones válidas (Anulado=2) con ingreso en el rango, mostrando
+        servicio de INGRESO (a.CodiServ, fijo) y servicio de EGRESO/ACTUAL (a.ServEgre,
+        se actualiza con traslados — ver Notas de Schema). Estado: Cerrado=2 ⇒ sin cerrar."""
+        return """
+        SELECT
+            a.ConsAdmi,
+            COALESCE(p.NombUsua, a.NumeUsua)                        AS Paciente,
+            a.FechIngr                                              AS FechaIngreso,
+            NULLIF(a.FechEgre, '0000-00-00')                        AS FechaEgreso,
+            CASE a.TipoAten
+                WHEN 1 THEN 'Consulta Externa'
+                WHEN 2 THEN 'Hospitalización'
+                WHEN 3 THEN 'Urgencias'
+                WHEN 4 THEN 'PyP'
+                ELSE CONCAT('Tipo ', a.TipoAten)
+            END                                                     AS TipoAtencion,
+            COALESCE(csi.NombServ, CONCAT('Servicio ', a.CodiServ)) AS ServicioIngreso,
+            COALESCE(cse.NombServ, CONCAT('Servicio ', a.ServEgre)) AS ServicioEgreso,
+            a.DiagIngr                                              AS DiagnosticoIngreso,
+            CASE WHEN a.Cerrado = 2 THEN 'Sin cerrar' ELSE 'Cerrada' END AS Estado,
+            COALESCE(u.Nombre, a.UsuaDigi)                          AS UsuarioAbrio
+        FROM Admision a
+        LEFT JOIN Paciente p   ON p.NumeUsua   = a.NumeUsua
+        LEFT JOIN CodiServ csi ON csi.CodiServ = a.CodiServ
+        LEFT JOIN CodiServ cse ON cse.CodiServ = a.ServEgre
+        LEFT JOIN Usuarios u   ON u.Login      = a.UsuaDigi
+        WHERE a.Anulado = 2
+          AND a.FechIngr BETWEEN :fecha_inicio AND :fecha_fin
+        ORDER BY a.FechIngr DESC, a.ConsAdmi DESC
+        """
+
     def get_admisiones_sin_cerrar_resumen(self):
+        """'Sin cerrar' = Cerrado=2 (Admision con Historia Cerrada = NO), Anulado=2 (válida).
+        NO se exige FechEgre IS NULL: una historia con FechEgre ya registrada pero Cerrado
+        todavía en 2 SIGUE sin cerrar (a alguien le falta darle 'Cerrar Historia' en SIHOS)
+        — es justo el caso 'Proceso Incompleto' de Camas Bloqueadas, y SIHOS la sigue
+        mostrando como activa en 'servicio actual'. Confirmado sep-2026: excluir FechEgre
+        escondía 109 admisiones sin cerrar reales, 54 de ellas invisibles en TODO el
+        dashboard (sin cama real, tampoco salían en Camas Bloqueadas)."""
         return """
         SELECT
             CASE
@@ -2051,7 +1973,6 @@ class SIHOSQueries:
         FROM Admision
         WHERE Cerrado = 2
           AND Anulado = 2
-          AND FechEgre IS NULL
         GROUP BY rango
         ORDER BY rango
         """
@@ -2059,12 +1980,16 @@ class SIHOSQueries:
     def get_admisiones_sin_cerrar_detalle(self, dias_minimo: int = 30,
                                            tipo_aten: int = None,
                                            limit: int = 500):
+        """Ver nota de FechEgre en get_admisiones_sin_cerrar_resumen. Muestra el
+        servicio ACTUAL (a.ServEgre), no el de ingreso (a.CodiServ) — mismo criterio
+        que get_admisiones_sin_cerrar_por_area."""
         filtro_tipo = f"AND a.TipoAten = {int(tipo_aten)}" if tipo_aten else ""
         return f"""
         SELECT
             a.ConsAdmi,
             a.FechIngr,
             DATEDIFF(CURDATE(), a.FechIngr) AS dias_abierta,
+            NULLIF(a.FechEgre, '0000-00-00') AS FechEgre,
             CASE a.TipoAten
                 WHEN 1 THEN 'Consulta Externa'
                 WHEN 2 THEN 'Hospitalización'
@@ -2072,13 +1997,16 @@ class SIHOSQueries:
                 WHEN 4 THEN 'PyP'
                 ELSE CONCAT('Tipo ', a.TipoAten)
             END AS tipo_atencion,
-            a.CodiServ,
-            a.UsuaDigi AS usuario_apertura,
-            a.UsuaModi AS usuario_modifico
+            a.ServEgre                                              AS CodiServ,
+            COALESCE(cs.NombServ, CONCAT('Servicio ', a.ServEgre)) AS Servicio,
+            COALESCE(u1.Nombre, a.UsuaDigi) AS usuario_apertura,
+            COALESCE(u2.Nombre, a.UsuaModi) AS usuario_modifico
         FROM Admision a
+        LEFT JOIN CodiServ cs ON a.ServEgre = cs.CodiServ
+        LEFT JOIN Usuarios u1 ON u1.Login = a.UsuaDigi
+        LEFT JOIN Usuarios u2 ON u2.Login = a.UsuaModi
         WHERE a.Cerrado = 2
           AND a.Anulado = 2
-          AND a.FechEgre IS NULL
           AND DATEDIFF(CURDATE(), a.FechIngr) >= {int(dias_minimo)}
           {filtro_tipo}
         ORDER BY dias_abierta DESC
@@ -2087,52 +2015,66 @@ class SIHOSQueries:
 
     # ─── CIERRE DE ADMISIONES POR ÁREA ─────────────────────────────────────────
     def get_admisiones_sin_cerrar_por_area(self):
-        """Vista 1: TODAS las admisiones sin cerrar, agrupadas por servicio actual."""
+        """Vista 1: TODAS las admisiones sin cerrar, agrupadas por servicio actual.
+        Usa a.ServEgre ('Servicio Actual y/o de Egreso'), NO a.CodiServ ('Servicio de
+        Ingreso en la Admisión' — fijo, no refleja traslados). Confirmado sep-2026:
+        agrupar por CodiServ subestimaba brutalmente servicios de paso como
+        Urgencias-Observación (1 admisión vs 43 reales con ServEgre). Tampoco exige
+        FechEgre IS NULL — ver nota completa en get_admisiones_sin_cerrar_resumen."""
         return """
         SELECT
-            a.CodiServ,
-            COALESCE(cs.NombServ, CONCAT('Servicio ', a.CodiServ)) AS servicio,
+            a.ServEgre                                              AS CodiServ,
+            COALESCE(cs.NombServ, CONCAT('Servicio ', a.ServEgre)) AS servicio,
             COUNT(*)                                    AS total_admisiones,
             AVG(DATEDIFF(CURDATE(), a.FechIngr))         AS dias_promedio,
             MAX(DATEDIFF(CURDATE(), a.FechIngr))         AS dias_max,
             SUM(CASE WHEN DATEDIFF(CURDATE(), a.FechIngr) <= 2
                      THEN 1 ELSE 0 END)                   AS posibles_activas,
             SUM(CASE WHEN DATEDIFF(CURDATE(), a.FechIngr) > 30
-                     THEN 1 ELSE 0 END)                   AS criticas_30dias
+                     THEN 1 ELSE 0 END)                   AS criticas_30dias,
+            SUM(CASE WHEN a.FechEgre IS NOT NULL
+                     THEN 1 ELSE 0 END)                   AS pendientes_cerrar_historia
         FROM Admision a
-        LEFT JOIN CodiServ cs ON a.CodiServ = cs.CodiServ
+        LEFT JOIN CodiServ cs ON a.ServEgre = cs.CodiServ
         WHERE a.Cerrado = 2
           AND a.Anulado = 2
-          AND a.FechEgre IS NULL
-        GROUP BY a.CodiServ, cs.NombServ
+        GROUP BY a.ServEgre, cs.NombServ
         ORDER BY total_admisiones DESC
         """
 
     def get_admisiones_sin_cerrar_con_cama_por_area(self):
-        """Vista 2: SOLO admisiones sin cerrar que ocupan una cama REAL actualmente."""
+        """Vista 2: SOLO admisiones sin cerrar que ocupan una cama REAL actualmente.
+        Agrupa por a.ServEgre (servicio actual), igual que get_admisiones_sin_cerrar_por_area.
+        Ya no exige FechEgre IS NULL: incluye tanto camas realmente ocupadas como las
+        bloqueadas por 'proceso incompleto' (ver Camas Bloqueadas) — todas siguen sin
+        cerrar la historia y bloqueando la cama por igual."""
         return """
         SELECT
-            a.CodiServ,
-            COALESCE(cs.NombServ, CONCAT('Servicio ', a.CodiServ)) AS servicio,
+            a.ServEgre                                              AS CodiServ,
+            COALESCE(cs.NombServ, CONCAT('Servicio ', a.ServEgre)) AS servicio,
             COUNT(*)                                    AS camas_bloqueadas,
             AVG(DATEDIFF(CURDATE(), a.FechIngr))         AS dias_promedio,
             MAX(DATEDIFF(CURDATE(), a.FechIngr))         AS dias_max
         FROM Admision a
-        LEFT JOIN CodiServ cs ON a.CodiServ = cs.CodiServ
+        LEFT JOIN CodiServ cs ON a.ServEgre = cs.CodiServ
         JOIN CodiCama cc ON cc.ConsAdmi = a.ConsAdmi
                           AND cc.Activa = 1 AND cc.Habilita = 1
         WHERE a.Cerrado = 2
           AND a.Anulado = 2
-          AND a.FechEgre IS NULL
-        GROUP BY a.CodiServ, cs.NombServ
+        GROUP BY a.ServEgre, cs.NombServ
         ORDER BY camas_bloqueadas DESC
         """
 
     def get_admisiones_sin_cerrar_detalle_por_servicio(self, codi_serv,
                                                          solo_con_cama: bool = False,
-                                                         limit: int = 1000):
-        """Detalle de admisiones sin cerrar de UN servicio específico, para entregar
-        al jefe de área en la reunión de cierre."""
+                                                         limit: int = 20000):
+        """Detalle de admisiones sin cerrar de UN servicio actual (a.ServEgre) específico,
+        para entregar al jefe de área en la reunión de cierre. limit alto a propósito:
+        esta vista ya está acotada a un área y no debe truncar silenciosamente la
+        descarga (antes limit=1000 cortaba tablas/Excel de áreas con más admisiones).
+        Ya no exige FechEgre IS NULL (ver nota en get_admisiones_sin_cerrar_resumen);
+        se expone FechEgre en el detalle para que se vea a simple vista cuáles ya
+        tienen fecha de egreso y solo faltan 'Cerrar Historia'."""
         join_cama = ("JOIN CodiCama cc ON cc.ConsAdmi = a.ConsAdmi AND cc.Activa=1 AND cc.Habilita=1"
                      if solo_con_cama else
                      "LEFT JOIN CodiCama cc ON cc.ConsAdmi = a.ConsAdmi AND cc.Activa=1 AND cc.Habilita=1")
@@ -2141,6 +2083,7 @@ class SIHOSQueries:
             a.ConsAdmi,
             a.FechIngr,
             DATEDIFF(CURDATE(), a.FechIngr)   AS dias_abierta,
+            NULLIF(a.FechEgre, '0000-00-00')  AS FechEgre,
             CASE a.TipoAten
                 WHEN 1 THEN 'Consulta Externa'
                 WHEN 2 THEN 'Hospitalización'
@@ -2150,14 +2093,15 @@ class SIHOSQueries:
             END                                AS tipo_atencion,
             cc.CodiCama,
             cc.NombCama,
-            a.UsuaDigi                        AS usuario_apertura,
-            a.UsuaModi                        AS usuario_modifico
+            COALESCE(u1.Nombre, a.UsuaDigi)   AS usuario_apertura,
+            COALESCE(u2.Nombre, a.UsuaModi)   AS usuario_modifico
         FROM Admision a
         {join_cama}
+        LEFT JOIN Usuarios u1 ON u1.Login = a.UsuaDigi
+        LEFT JOIN Usuarios u2 ON u2.Login = a.UsuaModi
         WHERE a.Cerrado = 2
           AND a.Anulado = 2
-          AND a.FechEgre IS NULL
-          AND a.CodiServ = :codi_serv
+          AND a.ServEgre = :codi_serv
         ORDER BY dias_abierta DESC
         LIMIT {int(limit)}
         """
@@ -2192,10 +2136,11 @@ class SIHOSQueries:
             END AS tipo_bug,
             a.FechIngr,
             a.FechEgre,
-            a.UsuaModi                       AS cerro,
+            COALESCE(u.Nombre, a.UsuaModi)   AS cerro,
             DATEDIFF(CURDATE(), a.FechIngr)  AS dias_bloqueada
         FROM CodiCama cc
         JOIN Admision a ON cc.ConsAdmi = a.ConsAdmi
+        LEFT JOIN Usuarios u ON u.Login = a.UsuaModi
         WHERE cc.ConsAdmi IS NOT NULL
           AND cc.ConsAdmi != ''
           AND a.Cerrado = 1
@@ -2213,9 +2158,10 @@ class SIHOSQueries:
             a.FechEgre,
             DATEDIFF(CURDATE(), a.FechIngr)  AS dias_abierta,
             DATEDIFF(CURDATE(), a.FechEgre)  AS dias_desde_egreso,
-            a.UsuaModi                       AS responsable
+            COALESCE(u.Nombre, a.UsuaModi)   AS responsable
         FROM CodiCama cc
         JOIN Admision a ON cc.ConsAdmi = a.ConsAdmi
+        LEFT JOIN Usuarios u ON u.Login = a.UsuaModi
         WHERE cc.ConsAdmi IS NOT NULL
           AND cc.ConsAdmi != ''
           AND a.Cerrado = 2

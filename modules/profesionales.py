@@ -165,7 +165,7 @@ def render_profesionales():
                 showlegend=False,
                 coloraxis_colorbar=dict(title='% Cumplimiento')
             )
-            st.plotly_chart(fig_mod, use_container_width=True)
+            st.plotly_chart(fig_mod, use_container_width=True, key="prof_fig_mod")
 
         with col_mod2:
             st.markdown("#### Resumen por módulo")
@@ -307,7 +307,7 @@ def render_profesionales():
             
             if fig_dist:
                 fig_dist.update_layout(height=450)
-                st.plotly_chart(fig_dist, use_container_width=True)
+                st.plotly_chart(fig_dist, use_container_width=True, key="prof_fig_dist")
         
         with col_metricas:
             st.markdown("### 📊 Resumen")
@@ -496,7 +496,7 @@ def render_profesionales():
                 fig_tendencia.update_layout(height=450)
         
         if fig_tendencia:
-            st.plotly_chart(fig_tendencia, use_container_width=True)
+            st.plotly_chart(fig_tendencia, use_container_width=True, key="prof_fig_tendencia")
         
         # Métricas resumen
         st.markdown("### 📊 Resumen del Período")
@@ -554,7 +554,7 @@ def render_profesionales():
             yaxis={'categoryorder':'total ascending'},
             showlegend=False
         )
-        st.plotly_chart(fig_top, use_container_width=True)
+        st.plotly_chart(fig_top, use_container_width=True, key="prof_fig_top")
         
         with st.expander("📋 Ver tabla detallada"):
             st.dataframe(datos_mostrar, use_container_width=True, hide_index=True)
@@ -574,7 +574,11 @@ def render_profesionales():
     # =======================================================================
     # SECCIÓN: MAPA DE CALOR — CARGA POR HORA Y DÍA
     # =======================================================================
-    render_section_banner("🌡️", "Mapa de Calor — Carga Horaria", rango_fechas)
+    render_section_banner(
+        "🌡️", "Mapa de Calor — Carga Horaria", rango_fechas,
+        help_text="Las celdas más oscuras indican mayor concentración de atenciones. "
+                  "Útil para planificación de turnos y recursos."
+    )
 
     if not data['heatmap_hora'].empty:
         import numpy as np
@@ -597,12 +601,7 @@ def render_profesionales():
             aspect='auto'
         )
         fig_heat.update_layout(height=500)
-        st.plotly_chart(fig_heat, use_container_width=True)
-
-        st.caption(
-            "Las celdas más oscuras indican mayor concentración de atenciones. "
-            "Útil para planificación de turnos y recursos."
-        )
+        st.plotly_chart(fig_heat, use_container_width=True, key="prof_fig_heat")
     else:
         st.info("No hay datos de horario de atenciones para el período seleccionado.")
 

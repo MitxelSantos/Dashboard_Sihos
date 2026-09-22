@@ -19,6 +19,7 @@ from components.widgets import (
     render_metric_card,
     render_section_banner,
     render_section_divider,
+    render_heading_help,
     get_fecha_rango_texto
 )
 from components.layout import render_footer
@@ -766,6 +767,12 @@ def render_admisiones():
 
         with col_serv:
             if not data['estancia_servicio'].empty:
+                render_heading_help(
+                    "Estancia promedio por servicio (días)",
+                    "Excluye estancias > 60 días para evitar distorsión por casos "
+                    "crónicos/sociales. Los casos prolongados se muestran más abajo.",
+                    tag="h5", extra_style="margin:0 0 0.25rem 0; font-size:1rem; font-weight:600;"
+                )
                 fig_serv = px.bar(
                     data['estancia_servicio'],
                     x='PromDias',
@@ -773,7 +780,6 @@ def render_admisiones():
                     orientation='h',
                     color='PromDias',
                     color_continuous_scale='RdYlGn_r',
-                    title='Estancia promedio por servicio (días)',
                     text='PromDias',
                     hover_data=['TotalEgresos', 'MinDias', 'MaxDias']
                 )
@@ -787,11 +793,6 @@ def render_admisiones():
                     showlegend=False
                 )
                 st.plotly_chart(fig_serv, use_container_width=True)
-
-        st.caption(
-            "⚠️ El promedio excluye estancias > 60 días para evitar distorsión "
-            "por casos crónicos/sociales. Los casos prolongados se muestran abajo."
-        )
 
         if not data['estancia_servicio'].empty:
             with st.expander("📋 Ver detalle por servicio"):
@@ -913,5 +914,76 @@ def render_admisiones():
         st.info("No hay datos de readmisiones")
     
     # Módulo "Admisiones Abiertas" movido a Reportes → tab "Admisiones sin Cerrar"
+
+    render_section_divider()
+
+    # =======================================================================
+    # LISTADO DE ADMISIONES CON SERVICIO DE EGRESO
+    # =======================================================================
+    render_section_banner(
+        "📋", "Listado de Admisiones — Servicio de Egreso", rango_fechas,
+        help_text="Admisiones válidas (Anulado=2) con fecha de ingreso en el rango. "
+                  "'Servicio de ingreso' (Admision.CodiServ) es fijo; 'Servicio de egreso' "
+                  "(Admision.ServEgre) es el servicio actual o de egreso y cambia con los traslados."
+    )
+
+    @st.cache_data(ttl=CACHE_TTL)
+    def load_listado_egreso(f_inicio, f_fin):
+        db = get_db_connector()
+        df = db.execute_query(
+            SIHOSQueries().get_admisiones_listado_egreso(),
+            {'fecha_inicio': f_inicio, 'fecha_fin': f_fin}
+        )
+        return df
+
+    df_lista = load_listado_egreso(fecha_inicio, fecha_fin)
+
+    if df_lista is not None and not df_lista.empty:
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            f_tipo = st.multiselect(
+                "Tipo de atención", sorted(df_lista['TipoAtencion'].dropna().unique()),
+                key="lista_egreso_tipo"
+            )
+        with col_f2:
+            f_egreso = st.multiselect(
+                "Servicio de egreso", sorted(df_lista['ServicioEgreso'].dropna().unique()),
+                key="lista_egreso_servicio"
+            )
+        with col_f3:
+            f_estado = st.multiselect(
+                "Estado", sorted(df_lista['Estado'].dropna().unique()),
+                key="lista_egreso_estado"
+            )
+
+        df_f = df_lista
+        if f_tipo:
+            df_f = df_f[df_f['TipoAtencion'].isin(f_tipo)]
+        if f_egreso:
+            df_f = df_f[df_f['ServicioEgreso'].isin(f_egreso)]
+        if f_estado:
+            df_f = df_f[df_f['Estado'].isin(f_estado)]
+
+        st.caption(f"{len(df_f):,} de {len(df_lista):,} admisiones")
+        st.dataframe(df_f, use_container_width=True, hide_index=True)
+
+        col_d1, col_d2 = st.columns(2)
+        with col_d1:
+            st.download_button(
+                "📥 Descargar CSV",
+                data=df_f.to_csv(index=False, encoding='utf-8-sig'),
+                file_name=f"admisiones_servicio_egreso_{fecha_inicio}_{fecha_fin}.csv",
+                mime="text/csv", key="csv_lista_egreso"
+            )
+        with col_d2:
+            st.download_button(
+                "📥 Descargar Excel",
+                data=dataframe_to_excel(df_f),
+                file_name=f"admisiones_servicio_egreso_{fecha_inicio}_{fecha_fin}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="xlsx_lista_egreso"
+            )
+    else:
+        st.info("No hay admisiones con ingreso en el período seleccionado.")
 
     render_footer()
